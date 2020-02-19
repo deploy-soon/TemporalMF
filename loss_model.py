@@ -65,15 +65,15 @@ class BaseBiasMF(nn.Module):
             user_bias + item_bias
         return preds.squeeze()
 
-
 class Train:
 
-    def __init__(self, factors, batch_size=128, train_ratio=0.8, epochs=10):
+    def __init__(self, factors=20, file_name="exchange_rate.txt",
+                 batch_size=128, train_ratio=0.8, epochs=10):
 
         self.factors = factors
 
         self.train_ratio = train_ratio
-        self.data = COOMatrix("exchange_rate.txt")
+        self.data = COOMatrix(file_name)
 
         data_len = len(self.data)
         self.train_num = int(data_len * self.train_ratio)
@@ -87,10 +87,27 @@ class Train:
 
         self.epochs = epochs
 
+    def _get_loss(self, loss_func, row, col, pred, y):
+        loss = loss_func(pred, y)
+        reg_loss = None
+        for name, param in self.model.named_parameters():
+            if "user_factor" in name:
+                temp = torch.sum(param[row]**2)
+            elif "item_factor" in name:
+                temp = torch.sum(param[col]**2)
+
+            if reg_loss is None:
+                reg_loss = 0.5 * torch.sum(temp**2)
+            else:
+                reg_loss += 0.5 * temp.norm(2)**2
+        loss += 1.0 * reg_loss
+        return loss, reg_loss
+
     def train(self, epoch, loss_func, optimizer):
         self.model.train()
 
         total_loss = torch.Tensor([0])
+        total_reg_loss = torch.Tensor([0])
         pbar = tqdm(enumerate(self.train_loader), total=len(self.train_loader),
                     desc="({0:^3})".format(epoch))
         for batch, ((row, col), val) in pbar:
@@ -98,14 +115,18 @@ class Train:
             col = col.to(device)
             val = val.to(device)
             optimizer.zero_grad()
-            preds = self.model(row, col)
-            loss = loss_func(preds, val)
+            pred = self.model(row, col)
+
+            loss, reg_loss = self._get_loss(loss_func, row, col, pred, val)
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
+            total_reg_loss += reg_loss
             batch_loss = loss.item()
             pbar.set_postfix(train_loss=batch_loss)
         total_loss /= (self.train_num)
+        total_reg_loss /= (self.train_num)
+        print(total_loss, total_reg_loss)
         return total_loss[0]
 
     def validate(self, epoch, loss_func):
@@ -134,7 +155,8 @@ class Train:
 
     def run(self):
         loss_func = nn.MSELoss(reduction="sum")
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=0.0001)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=0.0001,
+                                     weight_decay=0)
         for epoch in range(self.epochs):
             train_loss = self.train(epoch, loss_func, optimizer)
             vali_loss = self.validate(epoch, loss_func)
@@ -143,6 +165,6 @@ class Train:
 
 
 if __name__ == "__main__":
-    train = Train(factors=10, epochs=100)
+    train = Train(factors=20, file_name="exchange_rate.txt", epochs=120)
     train.run()
 
