@@ -89,18 +89,14 @@ class Train:
 
     def _get_loss(self, loss_func, row, col, pred, y):
         loss = loss_func(pred, y)
-        reg_loss = None
+        reg_loss = 0.0
         for name, param in self.model.named_parameters():
             if "user_factor" in name:
-                temp = torch.sum(param[row]**2)
+                partial_loss = torch.sum(param[row]**2) / self.data.users
             elif "item_factor" in name:
-                temp = torch.sum(param[col]**2)
-
-            if reg_loss is None:
-                reg_loss = 0.5 * torch.sum(temp**2)
-            else:
-                reg_loss += 0.5 * temp.norm(2)**2
-        loss += 1.0 * reg_loss
+                partial_loss = torch.sum(param[col]**2) / self.data.items
+            reg_loss += partial_loss
+        loss += 4.0 * reg_loss
         return loss, reg_loss
 
     def train(self, epoch, loss_func, optimizer):
@@ -126,7 +122,7 @@ class Train:
             pbar.set_postfix(train_loss=batch_loss)
         total_loss /= (self.train_num)
         total_reg_loss /= (self.train_num)
-        print(total_loss, total_reg_loss)
+        print("train loss: {} regularizatoin loss: {}".format(total_loss, total_reg_loss))
         return total_loss[0]
 
     def validate(self, epoch, loss_func):
@@ -136,8 +132,9 @@ class Train:
             row = row.to(device)
             col = col.to(device)
             val = val.to(device)
-            preds = self.model(row, col)
-            loss = loss_func(preds, val)
+            pred = self.model(row, col)
+            loss, reg_loss = self._get_loss(loss_func, row, col, pred, val)
+
             total_loss += loss.item()
         total_loss /= (self.vali_num)
         return total_loss[0]
@@ -165,6 +162,6 @@ class Train:
 
 
 if __name__ == "__main__":
-    train = Train(factors=20, file_name="exchange_rate.txt", epochs=120)
+    train = Train(factors=20, file_name="exchange_rate.txt", epochs=500)
     train.run()
 
