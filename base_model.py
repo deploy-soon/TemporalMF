@@ -52,7 +52,7 @@ class BaseTrain:
                  test_inference=20):
 
         self.factors = factors
-
+        self.batch_size = batch_size
         self.train_ratio = train_ratio
         self.data = COOMatrix(file_name)
 
@@ -101,8 +101,8 @@ class BaseTrain:
             row = row.to(device)
             col = col.to(device)
             val = val.to(device)
-            preds = self.model(row, col)
-            loss = loss_func(preds, val)
+            pred = self.model(row, col)
+            loss = self.get_loss(loss_func, row, col, pred, val)
             total_loss += loss.item()
         total_loss /= (self.vali_num)
         return total_loss[0]
@@ -114,8 +114,12 @@ class BaseTrain:
             col = col.to(device)
             val = val.to(device)
             preds = self.model(row, col)
+            count = 0
             for v, p in zip(val, preds):
-                print("actual: {:.4}, predict: {:.4}".format(v, p))
+                print("actual: {:.5}, predict: {:.5}".format(v, p))
+                count += 1
+                if count > self.test_inference:
+                    break
             break
 
     def run(self):
