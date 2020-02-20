@@ -1,17 +1,18 @@
 from os.path import join as pjoin
-import numpy as np
 from tqdm import tqdm
 import torch
 from torch import nn
-from torch.utils.data import Dataset, DataLoader,random_split
 
-from data import COOMatrix
 from base_model import BaseTrain, BaseMF, BaseBiasMF
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class Train(BaseTrain):
+class TemporalMF(nn.Module)
+
+    pass
+
+class TemporalTrain(BaseTrain):
 
     def __init__(self, lmbd=4.0, *args, **kwargs):
         super().__init__(*args, **kwargs)

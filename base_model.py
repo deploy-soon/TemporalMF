@@ -5,35 +5,11 @@ import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader,random_split
 
+from data import COOMatrix
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-class COOMatrix(Dataset):
-
-    def __init__(self, file_name):
-        self.file_name = file_name
-        self.load_txt()
-
-    def load_txt(self):
-        file_path = pjoin("data", self.file_name)
-        with open(file_path, "r") as fin:
-            array = np.loadtxt(fin, delimiter=",")
-        shape = array.shape
-        self.users = shape[0]
-        self.items = shape[1]
-        self.data_len = self.users * self.items
-        self.data = array
-        print("load data: {}".format(shape))
-
-    def __getitem__(self, index):
-        assert index < self.data_len
-        row = int(index / self.items)
-        col = index % self.items
-        val = self.data[row][col]
-        return (row, col), val
-
-    def __len__(self):
-        return self.data_len
 
 class BaseMF(nn.Module):
 
@@ -65,10 +41,15 @@ class BaseBiasMF(nn.Module):
             user_bias + item_bias
         return preds.squeeze()
 
-class Train:
+class BaseTrain:
 
-    def __init__(self, factors=20, file_name="exchange_rate.txt",
-                 batch_size=128, train_ratio=0.8, epochs=10):
+    def __init__(self,
+                 factors=20,
+                 file_name="exchange_rate.txt",
+                 batch_size=128,
+                 train_ratio=0.8,
+                 epochs=10,
+                 test_inference=20):
 
         self.factors = factors
 
@@ -83,9 +64,14 @@ class Train:
                                        shuffle=True)
         self.vali_loader = DataLoader(vali_set, batch_size=batch_size,
                                       shuffle=True)
-        self.model = BaseBiasMF(self.data.users, self.data.items, self.factors).to(device)
 
+        self.test_inference = test_inference
         self.epochs = epochs
+
+        self.model = None
+
+    def get_loss(self, loss_func, row, col, pred, y):
+        raise NotImplemented
 
     def train(self, epoch, loss_func, optimizer):
         self.model.train()
@@ -98,8 +84,8 @@ class Train:
             col = col.to(device)
             val = val.to(device)
             optimizer.zero_grad()
-            preds = self.model(row, col)
-            loss = loss_func(preds, val)
+            pred = self.model(row, col)
+            loss = self.get_loss(loss_func, row, col, pred, val)
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
@@ -129,7 +115,7 @@ class Train:
             val = val.to(device)
             preds = self.model(row, col)
             for v, p in zip(val, preds):
-                print("actual: {}, predict: {}".format(v, p))
+                print("actual: {:.4}, predict: {:.4}".format(v, p))
             break
 
     def run(self):
@@ -142,7 +128,18 @@ class Train:
         self.test()
 
 
+class Train(BaseTrain):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = BaseBiasMF(self.data.users, self.data.items, self.factors).to(device)
+
+    def get_loss(self, loss_func, row, col, pred, y):
+        loss = loss_func(pred, y)
+        return loss
+
+
 if __name__ == "__main__":
-    train = Train(factors=20, file_name="electricity.txt", epochs=250)
+    train = Train(factors=20, file_name="exchange_rate.txt", epochs=250)
     train.run()
 
