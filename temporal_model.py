@@ -93,6 +93,38 @@ class TemporalTrain(BaseTrain):
         #loss += reg_loss
         return loss, item_loss, time_loss, lag_loss
 
+    def get_loss_epoch(self, loss_func, row, col, pred, y):
+        loss = loss_func(pred, y)
+
+        params = self.model.state_dict()
+        param_time = params["time_factor.weight"]
+        param_item = params["item_factor.weight"]
+        param_lag = params["lag_factor.weight"]
+        item_loss = self.lambda_f * torch.sum(param_item**2)
+        lag_loss = self.lambda_theta * torch.sum(param_lag**2)
+
+        L = max(self.lag_set)
+        m = 1 + L
+
+        row = [r for r in range(m, self.data.users)]
+        filtered_row = torch.LongTensor(row).to(device)
+        noise = torch.index_select(param_time, 0, filtered_row)
+        for idx, lag in enumerate(self.lag_set):
+            lag_filtered_row = filtered_row - lag
+            #log_filtered_row: (batch size)
+            shift_time_param = torch.index_select(param_time, 0, lag_filtered_row)
+            #shift_time_param: (batch size, factors)
+            lag_weight = param_lag[idx]
+            #lag_weight: (factor, 1)
+            noise -= shift_time_param * lag_weight
+            #hadamard product
+        time_loss = 0.5 * torch.sum(noise ** 2)
+        time_loss += 0.5 * self.mu_x * torch.sum(param_time[row] ** 2)
+        time_loss = self.lambda_x * time_loss
+
+        reg_loss = item_loss + time_loss + lag_loss
+        return loss, item_loss, time_loss, lag_loss
+
     def train(self, epoch, loss_func, optimizer):
         self.model.train()
 
@@ -108,7 +140,8 @@ class TemporalTrain(BaseTrain):
             val = val.to(device)
             optimizer.zero_grad()
             pred = self.model(row, col)
-            loss, item_loss, time_loss, lag_loss = self.get_loss(loss_func, row, col, pred, val)
+            #loss, item_loss, time_loss, lag_loss = self.get_loss(loss_func, row, col, pred, val)
+            loss, item_loss, time_loss, lag_loss = self.get_loss_epoch(loss_func, row, col, pred, val)
             (loss+item_loss+time_loss+lag_loss).backward()
             optimizer.step()
             total_loss += loss.item()
@@ -136,7 +169,6 @@ class TemporalTrain(BaseTrain):
             total_loss += loss.item()
         total_loss /= (self.vali_num)
         return total_loss[0]
-
 
 
 if __name__ == "__main__":
