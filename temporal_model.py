@@ -2,6 +2,7 @@ from os.path import join as pjoin
 from tqdm import tqdm
 import torch
 from torch import nn
+from torch.autograd import Variable
 
 from base_model import BaseTrain, BaseMF, BaseBiasMF
 
@@ -10,19 +11,24 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class TemporalMF(nn.Module):
 
-    def __init__(self, times, items, factors, lags):
+    def __init__(self, times, items, factors, lag_set):
         """
         TRMF embedding vectors
         :param times: length of time series
         :param items: dimensions of time series
         :param factors: dimensions of latent factors
-        :param lags: the size of Lag set
+        :param lag_set: list of time interval
         """
         super().__init__()
 
         self.time_factor = nn.Embedding(times, factors)
         self.item_factor = nn.Embedding(items, factors)
+        lags = len(lag_set)
+        self.lag_set = lag_set
         self.lag_factor = nn.Embedding(lags, factors)
+
+    def _time_AR(self, time):
+        pass
 
     def forward(self, time, item):
         preds = (self.time_factor(time) * self.item_factor(item)).sum(1, keepdim=True)
@@ -45,7 +51,18 @@ class TemporalTrain(BaseTrain):
         assert self.lags < self.data.users, "Lag set is too big"
 
         self.model = TemporalMF(self.data.users, self.data.items,
-                                self.factors, self.lags).to(device)
+                                self.factors, self.lag_set).to(device)
+
+    def _get_loss(self, loss_func, row, col, pred, y):
+
+        #params = self.model.state_dict()
+        #param_item = Variable(params["item_factor.weight"], requires_grad=True)
+        item_loss = self.lambda_f * torch.sum(self.model.item_factor(col)**2)\
+            / (self.data.users / self.batch_size)
+        print(col)
+        print(self.model.item_factor(col).shape)
+        #print(col, param_item[col], item_loss)
+        return item_loss
 
     def get_loss(self, loss_func, row, col, pred, y):
         """
@@ -61,31 +78,33 @@ class TemporalTrain(BaseTrain):
         4. Regularization term with time weight factors
         """
         loss = loss_func(pred, y)
-
         params = self.model.state_dict()
         param_time = params["time_factor.weight"]
         param_item = params["item_factor.weight"]
         param_lag = params["lag_factor.weight"]
-        item_loss = self.lambda_f * torch.sum(param_item[col]**2)\
+        item_loss = self.lambda_f * torch.sum(self.model.item_factor(col)**2)\
             / (self.data.users / self.batch_size)
-        lag_loss = self.lambda_theta * torch.sum(param_lag**2)\
+        lag_loss = self.lambda_theta * torch.sum(self.model.lag_factor.weight**2)\
             / (self.data.users * self.data.items / self.batch_size)
 
         L = max(self.lag_set)
         m = 1 + L
         filtered_row = row[row >= m]
-        noise = torch.index_select(param_time, 0, filtered_row)
+        #noise = torch.index_select(param_time, 0, filtered_row)
+        noise = self.model.time_factor(filtered_row)
         for idx, lag in enumerate(self.lag_set):
             lag_filtered_row = filtered_row - lag
             #log_filtered_row: (batch size)
-            shift_time_param = torch.index_select(param_time, 0, lag_filtered_row)
+            #shift_time_param = torch.index_select(param_time, 0, lag_filtered_row)
+            shift_time_param = self.model.time_factor(lag_filtered_row)
             #shift_time_param: (batch size, factors)
-            lag_weight = param_lag[idx]
+            #lag_weight = param_lag[idx]
+            lag_weight = self.model.lag_factor(torch.LongTensor([idx]).to(device))
             #lag_weight: (factor, 1)
-            noise -= shift_time_param * lag_weight
+            noise = noise - shift_time_param * lag_weight
             #hadamard product
         time_loss = 0.5 * torch.sum(noise ** 2)
-        time_loss += 0.5 * self.mu_x * torch.sum(param_time[row] ** 2)
+        time_loss += 0.5 * self.mu_x * torch.sum(self.model.time_factor(row) ** 2)
         time_loss = self.lambda_x * time_loss\
             / (self.data.items / self.batch_size)
 
@@ -94,15 +113,15 @@ class TemporalTrain(BaseTrain):
         return loss, item_loss, time_loss, lag_loss
 
     def get_loss_epoch(self, loss_func, row, col, pred, y):
+        """NOTE: DEPRECATED"""
         loss = loss_func(pred, y)
 
         params = self.model.state_dict()
-        param_time = params["time_factor.weight"]
-        param_item = params["item_factor.weight"]
-        param_lag = params["lag_factor.weight"]
+        param_time = Variable(params["time_factor.weight"], requires_grad=True)
+        param_item = Variable(params["item_factor.weight"], requires_grad=True)
+        param_lag = Variable(params["lag_factor.weight"], requires_grad=True)
         item_loss = self.lambda_f * torch.sum(param_item**2)
         lag_loss = self.lambda_theta * torch.sum(param_lag**2)
-
         L = max(self.lag_set)
         m = 1 + L
 
@@ -121,7 +140,6 @@ class TemporalTrain(BaseTrain):
         time_loss = 0.5 * torch.sum(noise ** 2)
         time_loss += 0.5 * self.mu_x * torch.sum(param_time[row] ** 2)
         time_loss = self.lambda_x * time_loss
-
         reg_loss = item_loss + time_loss + lag_loss
         return loss, item_loss, time_loss, lag_loss
 
@@ -140,10 +158,16 @@ class TemporalTrain(BaseTrain):
             val = val.to(device)
             optimizer.zero_grad()
             pred = self.model(row, col)
-            #loss, item_loss, time_loss, lag_loss = self.get_loss(loss_func, row, col, pred, val)
-            loss, item_loss, time_loss, lag_loss = self.get_loss_epoch(loss_func, row, col, pred, val)
-            (loss+item_loss+time_loss+lag_loss).backward()
+            loss, item_loss, time_loss, lag_loss = self.get_loss(loss_func, row, col, pred, val)
+            #item_loss = self._get_loss(loss_func, row, col, pred, val)
+            #loss, item_loss, time_loss, lag_loss = self.get_loss_epoch(loss_func, row, col, pred, val)
+            cost_func = loss + item_loss + time_loss + lag_loss
+            #cost_func = item_loss + time_loss + lag_loss
+            #print(total_loss, item_loss)
+            cost_func.backward()
             optimizer.step()
+
+
             total_loss += loss.item()
             total_item_loss += item_loss.item()
             total_lag_loss += lag_loss.item()

@@ -63,7 +63,7 @@ class BaseTrain:
         self.train_loader = DataLoader(train_set, batch_size=batch_size,
                                        shuffle=True)
         self.vali_loader = DataLoader(vali_set, batch_size=batch_size,
-                                      shuffle=True)
+                                      shuffle=False)
 
         self.test_inference = test_inference
         self.epochs = epochs
