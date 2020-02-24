@@ -19,19 +19,19 @@ class Train(BaseTrain):
         self.model = BaseBiasMF(self.data.users, self.data.items, self.factors).to(device)
 
     def get_loss(self, loss_func, row, col, pred, y):
-        loss = loss_func(pred, y)
+        mse = loss_func(pred, y)
         reg_loss = 0.0
         for name, param in self.model.named_parameters():
             if "user_factor" in name:
-                partial_loss = torch.sum(param[row]**2) / self.data.users
+                partial_loss = torch.sum(param[row]**2)
             elif "item_factor" in name:
-                partial_loss = torch.sum(param[col]**2) / self.data.items
-            reg_loss += partial_loss
-        loss += self.lmbd * reg_loss
-        return loss
+                partial_loss = torch.sum(param[col]**2)
+            reg_loss = reg_loss + partial_loss
+        total_loss = mse + self.lmbd * reg_loss
+        return mse, total_loss
 
 
 if __name__ == "__main__":
-    train = Train(factors=20, file_name="exchange_rate.txt", epochs=2000, train_ratio=0.75)
+    train = Train(factors=20, file_name="exchange_rate.txt", epochs=100, train_ratio=0.8)
     train.run()
 

@@ -85,10 +85,10 @@ class BaseTrain:
             val = val.to(device)
             optimizer.zero_grad()
             pred = self.model(row, col)
-            loss = self.get_loss(loss_func, row, col, pred, val)
+            mse, loss = self.get_loss(loss_func, row, col, pred, val)
             loss.backward()
             optimizer.step()
-            total_loss += loss.item()
+            total_loss += mse.item()
             batch_loss = loss.item()
             pbar.set_postfix(train_loss=batch_loss)
         total_loss /= (self.train_num)
@@ -102,8 +102,8 @@ class BaseTrain:
             col = col.to(device)
             val = val.to(device)
             pred = self.model(row, col)
-            loss = self.get_loss(loss_func, row, col, pred, val)
-            total_loss += loss.item()
+            mse, loss = self.get_loss(loss_func, row, col, pred, val)
+            total_loss += mse.item()
         total_loss /= (self.vali_num)
         return total_loss[0]
 
