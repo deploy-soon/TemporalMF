@@ -1,3 +1,4 @@
+import fire
 from os.path import join as pjoin
 import numpy as np
 from tqdm import tqdm
@@ -13,10 +14,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Train(BaseTrain):
 
-    def __init__(self, lmbd=4.0, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, lmbd=0.04, **kwargs):
+        super().__init__(**kwargs)
         self.lmbd = lmbd
-        self.model = BaseBiasMF(self.data.users, self.data.items, self.factors).to(device)
+        self.model = BaseMF(self.data.users, self.data.items, self.factors).to(device)
 
     def get_loss(self, loss_func, row, col, pred, y):
         mse = loss_func(pred, y)
@@ -32,6 +33,5 @@ class Train(BaseTrain):
 
 
 if __name__ == "__main__":
-    train = Train(factors=20, file_name="exchange_rate.txt", epochs=100, train_ratio=0.8)
-    train.run()
+    fire.Fire(Train)
 

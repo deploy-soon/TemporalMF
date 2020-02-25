@@ -1,3 +1,4 @@
+import fire
 from os.path import join as pjoin
 from tqdm import tqdm
 import torch
@@ -40,8 +41,8 @@ class TemporalTrain(BaseTrain):
 
     def __init__(self, lambda_x=0.05, lambda_f=4.0, lambda_theta=1.0, mu_x=50.0,
                  lag_set = [1, 2, 3, 4],
-                 *args, **kwargs):
-        super().__init__(*args, **kwargs)
+                 **kwargs):
+        super().__init__(**kwargs)
         self.lambda_x = lambda_x
         self.lambda_f = lambda_f
         self.lambda_theta = lambda_theta
@@ -181,9 +182,6 @@ class TemporalTrain(BaseTrain):
         total_loss /= (self.vali_num)
         return total_loss[0]
 
-
 if __name__ == "__main__":
-    train = TemporalTrain(factors=20, file_name="exchange_rate.txt", epochs=300,
-                          train_ratio=0.80, batch_size=64)
-    train.run()
+    fire.Fire(TemporalTrain)
 
