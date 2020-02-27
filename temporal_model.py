@@ -35,8 +35,8 @@ class TemporalMF(nn.Module):
 
 class TemporalTrain(BaseTrain):
 
-    def __init__(self, lambda_x=0.25, lambda_f=4.0, lambda_theta=1.0, mu_x=4.0,
-                 lag_set = [1, 2, 3, 4], **kwargs):
+    def __init__(self, lambda_x=0.025, lambda_f=0.1, lambda_theta=0.1, mu_x=4.0,
+                 lag_set = [1, 2, 3, 4, 5, 6], **kwargs):
         super().__init__(**kwargs)
         self.lambda_x = lambda_x
         self.lambda_f = lambda_f
@@ -144,11 +144,7 @@ class TemporalTrain(BaseTrain):
             optimizer.zero_grad()
             pred = self.model(row, col)
             loss, item_loss, time_loss, lag_loss = self.get_loss(loss_func, row, col, pred, val)
-            #item_loss = self._get_loss(loss_func, row, col, pred, val)
-            #loss, item_loss, time_loss, lag_loss = self.get_loss_epoch(loss_func, row, col, pred, val)
             cost_func = loss + item_loss + time_loss + lag_loss
-            #cost_func = item_loss + time_loss + lag_loss
-            #print(total_loss, item_loss)
             cost_func.backward()
             optimizer.step()
 

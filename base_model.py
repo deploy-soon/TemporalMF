@@ -138,7 +138,8 @@ class BaseTrain:
     def run(self):
         loss_func = nn.MSELoss(reduction="sum")
         optimizer = torch.optim.Adam(self.model.parameters(),
-                                     lr=self.learning_rate)
+                                     lr=self.learning_rate,
+                                     weight_decay=0)
         train_loss, vali_loss = 0.0, 0.0
         for epoch in range(self.epochs):
             train_loss = self.train(epoch, loss_func, optimizer)
@@ -153,7 +154,7 @@ class Train(BaseTrain):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.model = BaseBiasMF(self.data.users, self.data.items, self.factors).to(device)
+        self.model = BaseMF(self.data.users, self.data.items, self.factors).to(device)
 
     def get_loss(self, loss_func, row, col, pred, y):
         loss = loss_func(pred, y)

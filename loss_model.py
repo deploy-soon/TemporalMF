@@ -21,13 +21,8 @@ class Train(BaseTrain):
 
     def get_loss(self, loss_func, row, col, pred, y):
         mse = loss_func(pred, y)
-        reg_loss = 0.0
-        for name, param in self.model.named_parameters():
-            if "user_factor" in name:
-                partial_loss = torch.sum(param[row]**2)
-            elif "item_factor" in name:
-                partial_loss = torch.sum(param[col]**2)
-            reg_loss = reg_loss + partial_loss
+        reg_loss = torch.sum(self.model.user_factor(row) ** 2) +\
+            torch.sum(self.model.item_factor(col) ** 2)
         total_loss = mse + self.lmbd * reg_loss
         return mse, total_loss
 
