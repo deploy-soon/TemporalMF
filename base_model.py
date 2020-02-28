@@ -58,11 +58,13 @@ class BaseTrain:
         self.batch_size = batch_size
         self.train_ratio = train_ratio
         self.learning_rate = learning_rate
+        self.file_name=file_name
         self.data = COOMatrix(file_name)
 
         data_len = len(self.data)
         self.train_num = int(data_len * self.train_ratio)
         self.vali_num = data_len - self.train_num
+        self.logger.debug("TRAIN NUM: {} VALIDATION NUM: {}".format(self.train_num, self.vali_num))
         train_set, vali_set = random_split(self.data, [self.train_num, self.vali_num])
         self.train_loader = DataLoader(train_set, batch_size=batch_size,
                                        shuffle=True)
@@ -135,18 +137,36 @@ class BaseTrain:
         hyperparam = ["{}: {}".format(h[0], h[1]) for h in hyperparam]
         self.logger.info(",".join(hyperparam))
 
+    def _cache_l1_norm(self):
+        # to get NRMSE at each epoch
+        train_abs = 0.0
+        vali_abs = 0.0
+        for (row, col), val in self.train_loader:
+            train_abs += torch.sum(val.abs()) / self.train_num
+        for (row, col), val in self.vali_loader:
+            vali_abs += torch.sum(val.abs()) / self.vali_num
+        self.train_abs = train_abs
+        self.vali_abs = vali_abs
+        self.logger.debug("absolute value: {}, {}".format(self.train_abs, self.vali_abs))
+
     def run(self):
         loss_func = nn.MSELoss(reduction="sum")
         optimizer = torch.optim.Adam(self.model.parameters(),
                                      lr=self.learning_rate,
                                      weight_decay=0)
-        train_loss, vali_loss = 0.0, 0.0
+        self._cache_l1_norm()
+        train_nrmse, vali_nrmse = 0.0, 99999.0
         for epoch in range(self.epochs):
-            train_loss = self.train(epoch, loss_func, optimizer)
-            vali_loss = self.validate(epoch, loss_func)
-            print("train loss: {:.4} vali loss: {:.4}".format(train_loss, vali_loss))
+            train_mse = self.train(epoch, loss_func, optimizer)
+            vali_mse = self.validate(epoch, loss_func)
+            epoch_train_loss = torch.sqrt(train_mse) / self.train_abs
+            epoch_vali_loss = torch.sqrt(vali_mse) / self.vali_abs
+            if epoch_vali_loss < vali_nrmse:
+                vali_nrmse = epoch_vali_loss
+                train_nrmse = epoch_train_loss
+            print("train loss: {:.4} vali loss: {:.4}".format(epoch_train_loss, epoch_vali_loss))
         self.log_hyperparameter()
-        self.logger.info("train_loss: {:.5}, vali_loss: {:.5}".format(train_loss, vali_loss))
+        self.logger.info("train_loss: {:.5}, vali_loss: {:.5}".format(train_nrmse, vali_nrmse))
         self.test()
 
 
