@@ -64,10 +64,8 @@ class TemporalTrain(BaseTrain):
         4. Regularization term with time weight factors
         """
         loss = loss_func(pred, y)
-        item_loss = self.lambda_f * torch.sum(self.model.item_factor(col)**2)\
-        #    / (self.data.users / self.batch_size)
-        lag_loss = self.lambda_theta * torch.sum(self.model.lag_factor**2)\
-        #    / (self.data.users * self.data.items / self.batch_size)
+        item_loss = self.lambda_f * torch.sum(self.model.item_factor(col)**2)
+        lag_loss = self.lambda_theta * torch.sum(self.model.lag_factor**2)
 
         L = max(self.lag_set)
         m = 1 + L
@@ -89,12 +87,9 @@ class TemporalTrain(BaseTrain):
         #AR_residual = (batch, factors)
         time_loss = 0.5 * torch.sum(AR_residual ** 2)
 
-        time_loss = time_loss + 0.5 * self.mu_x * torch.sum(self.model.time_factor(row) ** 2)
-        time_loss = self.lambda_x * time_loss\
-        #    / (self.data.items / self.batch_size)
+        time_loss = time_loss + self.mu_x * torch.sum(self.model.time_factor(row) ** 2)
+        time_loss = self.lambda_x * time_loss
 
-        reg_loss = item_loss + time_loss + lag_loss
-        #loss += reg_loss
         return loss, item_loss, time_loss, lag_loss
 
     def get_loss_epoch(self, loss_func, row, col, pred, y):
