@@ -1,0 +1,3 @@
+[submodule "multivariate-time-series-data"]
+	path = 3rd/multivariate-time-series-data
+	url = https://github.com/laiguokun/multivariate-time-series-data.git

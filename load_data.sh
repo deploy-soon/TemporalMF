@@ -1,0 +1,13 @@
+mkdir -p data
+echo "LOAD electricity.txt"
+cp ./3rd/multivariate-time-series-data/electricity/electricity.txt.gz ./data/electricity.txt.gz
+gzip -d ./data/electricity.txt.gz
+echo "LOAD exchange_rate.txt"
+cp ./3rd/multivariate-time-series-data/exchange_rate/exchange_rate.txt.gz ./data/exchange_rate.txt.gz
+gzip -d ./data/exchange_rate.txt.gz
+echo "LOAD solar_AL.txt"
+cp ./3rd/multivariate-time-series-data/solar-energy/solar_AL.txt.gz ./data/solar_AL.txt.gz
+gzip -d ./data/solar_AL.txt.gz
+echo "LOAD traffic.txt"
+cp ./3rd/multivariate-time-series-data/traffic/traffic.txt.gz ./data/traffic.txt.gz
+gzip -d ./data/traffic.txt.gz
