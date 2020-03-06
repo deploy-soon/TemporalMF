@@ -15,6 +15,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class BaseMF(nn.Module):
 
     def __init__(self, users, items, factors):
+        """
+        TRMF embedding vectors
+        :param times: length of time series
+        :param items: dimensions of time series
+        :param factors: dimensions of latent factors
+        """
         super().__init__()
         self.user_factor = nn.Embedding(users, factors)
         self.item_factor = nn.Embedding(items, factors)
@@ -154,6 +160,7 @@ class BaseTrain:
         optimizer = torch.optim.Adam(self.model.parameters(),
                                      lr=self.learning_rate,
                                      weight_decay=0)
+        print(self.model)
         self._cache_l1_norm()
         train_nrmse, vali_nrmse = 0.0, 99999.0
         for epoch in range(self.epochs):
