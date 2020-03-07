@@ -122,7 +122,7 @@ class BaseTrain:
             pred = self.model(row, col)
             mse, loss = self.get_loss(loss_func, row, col, pred, val)
             total_loss += mse.item()
-        total_loss /= (self.vali_num)
+        total_loss /= len(iterator)
         return total_loss[0]
 
     def test(self):
