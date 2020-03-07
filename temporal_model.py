@@ -47,7 +47,7 @@ class TemporalMF(nn.Module):
 
 class TemporalTrain(BaseTrain):
 
-    def __init__(self, lambda_x=0.025, lambda_f=0.1, lambda_theta=0.1, mu_x=4.0,
+    def __init__(self, lambda_x=0.1, lambda_f=0.001, lambda_theta=0.001, mu_x=0.01,
                  lag_set = [1, 2, 3, 4, 5, 6], **kwargs):
         super().__init__(**kwargs)
         self.lambda_x = lambda_x
@@ -140,10 +140,10 @@ class TemporalTrain(BaseTrain):
         total_loss /= (self.train_num)
         return total_loss[0]
 
-    def validate(self, epoch, loss_func):
+    def validate(self, epoch, iterator, loss_func):
         self.model.eval()
         total_loss = torch.Tensor([0])
-        for batch, ((row, col), val) in enumerate(self.vali_loader):
+        for batch, ((row, col), val) in enumerate(iterator):
             row = row.to(device)
             col = col.to(device)
             val = val.to(device)

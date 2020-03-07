@@ -54,10 +54,10 @@ class BaseTrain:
                  factors=20,
                  file_name="exchange_rate.txt",
                  batch_size=128,
-                 train_ratio=0.8,
-                 learning_rate=0.0005,
+                 train_ratio=0.7,
+                 learning_rate=0.005,
                  epochs=10,
-                 test_inference=20,
+                 test_inference=10,
                  **kwargs):
         self.logger = get_logger()
         self.factors = factors
@@ -69,12 +69,18 @@ class BaseTrain:
 
         data_len = len(self.data)
         self.train_num = int(data_len * self.train_ratio)
-        self.vali_num = data_len - self.train_num
-        self.logger.debug("TRAIN NUM: {} VALIDATION NUM: {}".format(self.train_num, self.vali_num))
-        train_set, vali_set = random_split(self.data, [self.train_num, self.vali_num])
+        self.vali_num = int((data_len - self.train_num) / 2)
+        self.test_num = data_len - self.train_num - self.vali_num
+        self.logger.debug("TRAIN NUM: {} VALIDATION NUM: {} TEST NUM: {}"
+                          .format(self.train_num, self.vali_num, self.test_num))
+
+        train_set, vali_set, test_set = random_split(self.data,
+                                                     [self.train_num, self.vali_num, self.test_num])
         self.train_loader = DataLoader(train_set, batch_size=batch_size,
                                        shuffle=True)
         self.vali_loader = DataLoader(vali_set, batch_size=batch_size,
+                                      shuffle=False)
+        self.test_loader = DataLoader(test_set, batch_size=batch_size,
                                       shuffle=False)
 
         self.test_inference = test_inference
@@ -106,10 +112,10 @@ class BaseTrain:
         total_loss /= (self.train_num)
         return total_loss[0]
 
-    def validate(self, epoch, loss_func):
+    def validate(self, epoch, iterator, loss_func):
         self.model.eval()
         total_loss = torch.Tensor([0])
-        for batch, ((row, col), val) in enumerate(self.vali_loader):
+        for batch, ((row, col), val) in enumerate(iterator):
             row = row.to(device)
             col = col.to(device)
             val = val.to(device)
@@ -121,7 +127,7 @@ class BaseTrain:
 
     def test(self):
         self.model.eval()
-        for (row, col), val in self.vali_loader:
+        for (row, col), val in self.test_loader:
             row = row.to(device)
             col = col.to(device)
             val = val.to(device)
@@ -147,13 +153,18 @@ class BaseTrain:
         # to get NRMSE at each epoch
         train_abs = 0.0
         vali_abs = 0.0
+        test_abs = 0.0
         for (row, col), val in self.train_loader:
             train_abs += torch.sum(val.abs()) / self.train_num
         for (row, col), val in self.vali_loader:
             vali_abs += torch.sum(val.abs()) / self.vali_num
+        for (row, col), val in self.test_loader:
+            test_abs += torch.sum(val.abs()) / self.test_num
+
         self.train_abs = train_abs
         self.vali_abs = vali_abs
-        self.logger.debug("absolute value: {}, {}".format(self.train_abs, self.vali_abs))
+        self.test_abs = test_abs
+        self.logger.debug("absolute value: {}, {}, {}".format(train_abs, vali_abs, test_abs))
 
     def run(self):
         loss_func = nn.MSELoss(reduction="sum")
@@ -162,18 +173,21 @@ class BaseTrain:
                                      weight_decay=0)
         print(self.model)
         self._cache_l1_norm()
-        train_nrmse, vali_nrmse = 0.0, 99999.0
+        train_nrmse, vali_nrmse, test_nrmse = 0.0, 99999.0, 0.0
         for epoch in range(self.epochs):
             train_mse = self.train(epoch, loss_func, optimizer)
-            vali_mse = self.validate(epoch, loss_func)
+            vali_mse = self.validate(epoch, self.vali_loader, loss_func)
             epoch_train_loss = torch.sqrt(train_mse) / self.train_abs
             epoch_vali_loss = torch.sqrt(vali_mse) / self.vali_abs
             if epoch_vali_loss < vali_nrmse:
                 vali_nrmse = epoch_vali_loss
                 train_nrmse = epoch_train_loss
+                test_mse = self.validate(epoch, self.test_loader, loss_func)
+                test_nrmse = torch.sqrt(test_mse) / self.test_abs
             print("train loss: {:.4} vali loss: {:.4}".format(epoch_train_loss, epoch_vali_loss))
         self.log_hyperparameter()
-        self.logger.info("train_loss: {:.5}, vali_loss: {:.5}".format(train_nrmse, vali_nrmse))
+        self.logger.info("train_loss: {:.5}, vali_loss: {:.5}, test_loss: {:.5}"
+                         .format(train_nrmse, vali_nrmse, test_nrmse))
         self.test()
 
 
