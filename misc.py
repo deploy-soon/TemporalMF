@@ -7,7 +7,7 @@ def get_logger(name=__file__):
         return logger
 
     logger.setLevel(logging.DEBUG)
-    fh = logging.FileHandler("./train.log")
+    fh = logging.FileHandler("./train_{}.log".format(name))
     fh.setLevel(logging.INFO)
     sh = logging.StreamHandler()
     sh.setLevel(logging.DEBUG)

@@ -15,6 +15,9 @@ class VectorEmbedding(nn.Module):
         self.lag_set = lag_set
         self.lag_factor = nn.Parameter(torch.rand(lags))
 
+    def regularizer(self):
+        return torch.sum(self.lag_factor ** 2)
+
     def forward(self, lags_vectors):
         temp = lags_vectors.permute(0, 2, 1)
         embedding_lags_dot = temp * self.lag_factor
@@ -33,6 +36,9 @@ class MatrixEmbedding(nn.Module):
         self.lag_set = lag_set
         self.lag_factor = nn.Parameter(torch.rand(lags, factors))
 
+    def regularizer(self):
+        return torch.sum(self.lag_factor ** 2)
+
     def forward(self, lags_vectors):
         embedding_lags_dot = lags_vectors * self.lag_factor
         #embedding_lags_dot = (batch, lags, factors)
@@ -50,6 +56,9 @@ class TensorEmbedding(nn.Module):
         self.lag_set = lag_set
         self.factors = factors
         self.lag_factor = nn.Parameter(torch.rand(factors, lags, factors))
+
+    def regularizer(self):
+        return torch.sum(self.lag_factor ** 2)
 
     def forward(self, lags_vectors):
         factors_lags_vectors = lags_vectors.repeat(1, self.factors, 1)

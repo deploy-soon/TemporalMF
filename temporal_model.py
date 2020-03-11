@@ -18,6 +18,9 @@ class MatrixEmbedding(nn.Module):
         self.lag_set = lag_set
         self.lag_factor = nn.Parameter(torch.rand(lags, factors))
 
+    def regularizer(self):
+        return torch.sum(self.lag_factor ** 2)
+
     def forward(self, lags_vectors):
         embedding_lags_dot = lags_vectors * self.lag_factor
         #embedding_lags_dot = (batch, lags, factors)
@@ -39,6 +42,23 @@ class TemporalMF(nn.Module):
         self.user_factor = nn.Embedding(users, factors)
         self.item_factor = nn.Embedding(items, factors)
         self.temporal_model = temporal_model
+
+    def predict(self, user, item):
+        lag_set = self.temporal_model.lag_set
+        m = max(lag_set) + 1
+        #filtered_row = row[row >= m]
+        filtered_row = user
+        filtered_batch_num = filtered_row.size()[0]
+        repeated_lag_set = torch.LongTensor([lag_set for _ in range(filtered_batch_num)]).to(device)
+        # repeated_lag_set = (batch, lags)
+        filtered_row_lags = filtered_row.expand(m - 1, filtered_batch_num).transpose(1, 0)
+        filtered_row_lags = filtered_row_lags - repeated_lag_set
+        #filtered_row_lags = (batch, lags)
+        embedding_lags = self.user_factor(filtered_row_lags)
+        #embedding_target = (batch, factors)
+        lag_pred = self.temporal_model(embedding_lags)
+        preds = (lag_pred * self.item_factor(item)).sum(1, keepdim=True)
+        return preds.squeeze()
 
     def forward(self, user, item):
         preds = (self.user_factor(user) * self.item_factor(item)).sum(1, keepdim=True)
@@ -81,7 +101,7 @@ class TemporalTrain(BaseTrain):
         """
         loss = loss_func(pred, y)
         item_loss = self.lambda_f * torch.sum(self.model.item_factor(col)**2)
-        lag_loss = self.lambda_theta * torch.sum(self.model.temporal_model.lag_factor**2)
+        lag_loss = self.lambda_theta * self.model.temporal_model.regularizer()
 
         L = max(self.lag_set)
         m = 1 + L
@@ -100,7 +120,7 @@ class TemporalTrain(BaseTrain):
         lag_pred = self.model.temporal_model(embedding_lags)
         AR_residual = embedding_target - lag_pred
         #AR_residual = (batch, factors)
-        time_loss = 0.5 * torch.sum(AR_residual ** 2)
+        time_loss = torch.sum(AR_residual ** 2)
 
         time_loss = time_loss + self.mu_x * torch.sum(self.model.user_factor(row) ** 2)
         time_loss = self.lambda_x * time_loss
@@ -152,6 +172,22 @@ class TemporalTrain(BaseTrain):
             total_loss += loss.item()
         total_loss /= (self.vali_num)
         return total_loss[0]
+
+    def test(self):
+        self.model.eval()
+        for (row, col), val in self.test_loader:
+            row = row.to(device)
+            col = col.to(device)
+            val = val.to(device)
+            #preds = self.model(row, col)
+            preds = self.model.predict(row, col)
+            count = 0
+            for v, p in zip(val, preds):
+                print("actual: {:.5}, predict: {:.5}".format(v, p))
+                count += 1
+                if count > self.test_inference:
+                    break
+            break
 
 if __name__ == "__main__":
     fire.Fire(TemporalTrain)

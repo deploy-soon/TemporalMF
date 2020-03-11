@@ -59,7 +59,7 @@ class BaseTrain:
                  epochs=10,
                  test_inference=10,
                  **kwargs):
-        self.logger = get_logger()
+        self.logger = get_logger(name=self.__class__.__name__)
         self.factors = factors
         self.batch_size = batch_size
         self.train_ratio = train_ratio
