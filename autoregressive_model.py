@@ -97,7 +97,7 @@ class TensorMF(TemporalTrain):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.temporal_model = MatrixEmbedding(lag_set=self.lag_set,
+        self.temporal_model = TensorEmbedding(lag_set=self.lag_set,
                                               factors=self.factors).to(device)
         self.model = TemporalMF(users=self.data.users,
                             items=self.data.items,

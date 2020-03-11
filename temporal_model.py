@@ -15,7 +15,7 @@ class MatrixEmbedding(nn.Module):
     def __init__(self, lag_set, factors):
         super().__init__()
         lags = len(lag_set)
-        self.lag_set = lag_set
+        self.lag_set = sorted(lag_set, reverse=True)
         self.lag_factor = nn.Parameter(torch.rand(lags, factors))
 
     def regularizer(self):
@@ -67,7 +67,7 @@ class TemporalMF(nn.Module):
 
 class TemporalTrain(BaseTrain):
 
-    def __init__(self, lambda_x=0.1, lambda_f=0.001, lambda_theta=0.001, mu_x=0.01,
+    def __init__(self, lambda_x=0.5, lambda_f=0.005, lambda_theta=0.005, mu_x=0.005,
                  lag_set = [1, 2, 3, 4, 5, 6], **kwargs):
         super().__init__(**kwargs)
         self.lambda_x = lambda_x
@@ -122,8 +122,7 @@ class TemporalTrain(BaseTrain):
         #AR_residual = (batch, factors)
         time_loss = torch.sum(AR_residual ** 2)
 
-        time_loss = time_loss + self.mu_x * torch.sum(self.model.user_factor(row) ** 2)
-        time_loss = self.lambda_x * time_loss
+        time_loss = self.lambda_x * time_loss + self.mu_x * torch.sum(self.model.user_factor(row) ** 2)
 
         return loss, item_loss, time_loss, lag_loss
 
