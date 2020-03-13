@@ -4,8 +4,6 @@ from torch import nn
 
 from temporal_model import TemporalTrain, TemporalMF
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 class VectorEmbedding(nn.Module):
 
@@ -74,11 +72,11 @@ class VectorMF(TemporalTrain):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.temporal_model = VectorEmbedding(lag_set=self.lag_set).to(device)
+        self.temporal_model = VectorEmbedding(lag_set=self.lag_set).to(self.device)
         self.model = TemporalMF(users=self.data.users,
                             items=self.data.items,
                             factors=self.factors,
-                            temporal_model=self.temporal_model).to(device)
+                            temporal_model=self.temporal_model).to(self.device)
 
 
 class MatrixMF(TemporalTrain):
@@ -86,11 +84,11 @@ class MatrixMF(TemporalTrain):
     def __init__(self, **kwargs):
         super().__init__(** kwargs)
         self.temporal_model = MatrixEmbedding(lag_set=self.lag_set,
-                                              factors=self.factors).to(device)
+                                              factors=self.factors).to(self.device)
         self.model = TemporalMF(users=self.data.users,
                             items=self.data.items,
                             factors=self.factors,
-                            temporal_model=self.temporal_model).to(device)
+                            temporal_model=self.temporal_model).to(self.device)
 
 
 class TensorMF(TemporalTrain):
@@ -98,11 +96,11 @@ class TensorMF(TemporalTrain):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.temporal_model = TensorEmbedding(lag_set=self.lag_set,
-                                              factors=self.factors).to(device)
+                                              factors=self.factors).to(self.device)
         self.model = TemporalMF(users=self.data.users,
                             items=self.data.items,
                             factors=self.factors,
-                            temporal_model=self.temporal_model).to(device)
+                            temporal_model=self.temporal_model).to(self.device)
 
 
 if __name__ == "__main__":

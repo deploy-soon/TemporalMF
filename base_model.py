@@ -1,15 +1,16 @@
+import os
+import json
 import fire
+import datetime
 from os.path import join as pjoin
 import numpy as np
 from tqdm import tqdm
 import torch
 from torch import nn
-from torch.utils.data import Dataset, DataLoader,random_split
+from torch.utils.data import Dataset, DataLoader, random_split
 
 from data import COOMatrix
 from misc import get_logger
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class BaseMF(nn.Module):
@@ -52,12 +53,14 @@ class BaseTrain:
 
     def __init__(self,
                  factors=20,
-                 file_name="exchange_rate.txt",
+                 file_name="exchange_rate",
                  batch_size=128,
                  train_ratio=0.7,
                  learning_rate=0.005,
                  epochs=10,
                  test_inference=10,
+                 gpu=0,
+                 verbose=False,
                  **kwargs):
         self.logger = get_logger(name=self.__class__.__name__)
         self.factors = factors
@@ -86,6 +89,11 @@ class BaseTrain:
         self.test_inference = test_inference
         self.epochs = epochs
 
+        if gpu is not None and torch.cuda.is_available():
+            self.device = torch.device("cuda:{}".format(gpu))
+        else:
+            self.device = torch.device("cpu")
+        self.verbose = verbose
         self.model = None
 
     def get_loss(self, loss_func, row, col, pred, y):
@@ -95,12 +103,16 @@ class BaseTrain:
         self.model.train()
 
         total_loss = torch.Tensor([0])
-        pbar = tqdm(enumerate(self.train_loader), total=len(self.train_loader),
-                    desc="({0:^3})".format(epoch))
+        if self.verbose:
+            pbar = tqdm(enumerate(self.train_loader), total=len(self.train_loader),
+                        desc="({0:^3})".format(epoch))
+        else:
+            pbar = enumerate(self.train_loader)
+
         for batch, ((row, col), val) in pbar:
-            row = row.to(device)
-            col = col.to(device)
-            val = val.to(device)
+            row = row.to(self.device)
+            col = col.to(self.device)
+            val = val.to(self.device)
             optimizer.zero_grad()
             pred = self.model(row, col)
             mse, loss = self.get_loss(loss_func, row, col, pred, val)
@@ -108,7 +120,8 @@ class BaseTrain:
             optimizer.step()
             total_loss += mse.item()
             batch_loss = loss.item()
-            pbar.set_postfix(train_loss=batch_loss)
+            if self.verbose:
+                pbar.set_postfix(train_loss=batch_loss)
         total_loss /= (self.train_num)
         return total_loss[0]
 
@@ -116,9 +129,9 @@ class BaseTrain:
         self.model.eval()
         total_loss = torch.Tensor([0])
         for batch, ((row, col), val) in enumerate(iterator):
-            row = row.to(device)
-            col = col.to(device)
-            val = val.to(device)
+            row = row.to(self.device)
+            col = col.to(self.device)
+            val = val.to(self.device)
             pred = self.model(row, col)
             mse, loss = self.get_loss(loss_func, row, col, pred, val)
             total_loss += mse.item()
@@ -128,9 +141,9 @@ class BaseTrain:
     def test(self):
         self.model.eval()
         for (row, col), val in self.test_loader:
-            row = row.to(device)
-            col = col.to(device)
-            val = val.to(device)
+            row = row.to(self.device)
+            col = col.to(self.device)
+            val = val.to(self.device)
             preds = self.model(row, col)
             count = 0
             for v, p in zip(val, preds):
@@ -140,14 +153,17 @@ class BaseTrain:
                     break
             break
 
-    def log_hyperparameter(self):
-        hyperparam = list()
+    def count_parameters(self):
+        return sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+
+    def get_hyperparameter(self):
+        hyperparam = dict()
         for key, value in self.__dict__.items():
             if isinstance(value, (str, int, float)):
-                hyperparam.append((key, value))
-        hyperparam = sorted(hyperparam, key=lambda x: x[0])
-        hyperparam = ["{}: {}".format(h[0], h[1]) for h in hyperparam]
-        self.logger.info(",".join(hyperparam))
+                hyperparam[key] = value
+        hyperparam_list = ["{}: {}".format(k, v) for k, v in hyperparam.items()]
+        self.logger.info(",".join(hyperparam_list))
+        return hyperparam
 
     def _cache_l1_norm(self):
         # to get NRMSE at each epoch
@@ -164,7 +180,14 @@ class BaseTrain:
         self.train_abs = train_abs
         self.vali_abs = vali_abs
         self.test_abs = test_abs
-        self.logger.debug("absolute value: {}, {}, {}".format(train_abs, vali_abs, test_abs))
+        self.logger.debug("absolute value: {:.5}, {:.5}, {:.5}".format(train_abs, vali_abs, test_abs))
+
+    def save_snapshot(self, info):
+        now = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+        res_path = pjoin("res", self.file_name, "{}.json".format(now))
+        os.makedirs(os.path.dirname(res_path), exist_ok=True)
+        with open(res_path, "w") as fout:
+            json.dump(info, fout, indent=4, sort_keys=True)
 
     def run(self):
         loss_func = nn.MSELoss(reduction="sum")
@@ -173,6 +196,8 @@ class BaseTrain:
                                      weight_decay=0)
         print(self.model)
         self._cache_l1_norm()
+        self.num_params = self.count_parameters()
+
         train_nrmse, vali_nrmse, test_nrmse = 0.0, 99999.0, 0.0
         for epoch in range(self.epochs):
             train_mse = self.train(epoch, loss_func, optimizer)
@@ -184,18 +209,27 @@ class BaseTrain:
                 train_nrmse = epoch_train_loss
                 test_mse = self.validate(epoch, self.test_loader, loss_func)
                 test_nrmse = torch.sqrt(test_mse) / self.test_abs
-            print("train loss: {:.4} vali loss: {:.4}".format(epoch_train_loss, epoch_vali_loss))
-        self.log_hyperparameter()
+            if self.verbose:
+                print("train loss: {:.4} vali loss: {:.4}".format(epoch_train_loss, epoch_vali_loss))
+        hyperparams = self.get_hyperparameter()
+        hyperparams.update({
+            "train_loss": float(train_nrmse),
+            "vali_loss": float(vali_nrmse),
+            "test_loss": float(test_nrmse),
+        })
         self.logger.info("train_loss: {:.5}, vali_loss: {:.5}, test_loss: {:.5}"
                          .format(train_nrmse, vali_nrmse, test_nrmse))
-        self.test()
+        self.save_snapshot(hyperparams)
+
+        if self.verbose:
+            self.test()
 
 
 class Train(BaseTrain):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.model = BaseMF(self.data.users, self.data.items, self.factors).to(device)
+        self.model = BaseMF(self.data.users, self.data.items, self.factors).to(self.device)
 
     def get_loss(self, loss_func, row, col, pred, y):
         loss = loss_func(pred, y)

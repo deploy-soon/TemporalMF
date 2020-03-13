@@ -7,8 +7,6 @@ from torch.autograd import Variable
 
 from base_model import BaseTrain, BaseMF, BaseBiasMF
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 class MatrixEmbedding(nn.Module):
 
@@ -43,7 +41,7 @@ class TemporalMF(nn.Module):
         self.item_factor = nn.Embedding(items, factors)
         self.temporal_model = temporal_model
 
-    def predict(self, user, item):
+    def predict(self, user, item, device):
         lag_set = self.temporal_model.lag_set
         m = max(lag_set) + 1
         #filtered_row = row[row >= m]
@@ -80,11 +78,11 @@ class TemporalTrain(BaseTrain):
         assert self.lags < self.data.users, "Lag set is too big"
 
         self.temporal_model = MatrixEmbedding(lag_set = self.lag_set,
-                                              factors = self.factors).to(device)
+                                              factors = self.factors).to(self.device)
         self.model = TemporalMF(users=self.data.users,
                             items=self.data.items,
                             factors=self.factors,
-                            temporal_model=self.temporal_model).to(device)
+                            temporal_model=self.temporal_model).to(self.device)
 
     def get_loss(self, loss_func, row, col, pred, y):
         """
@@ -108,7 +106,7 @@ class TemporalTrain(BaseTrain):
 
         filtered_row = row[row >= m]
         filtered_batch_num = filtered_row.size()[0]
-        repeated_lag_set = torch.LongTensor([self.lag_set for _ in range(filtered_batch_num)]).to(device)
+        repeated_lag_set = torch.LongTensor([self.lag_set for _ in range(filtered_batch_num)]).to(self.device)
         # repeated_lag_set = (batch, lags)
         filtered_row_lags = filtered_row.expand(self.lags, filtered_batch_num).transpose(1, 0)
         filtered_row_lags = filtered_row_lags - repeated_lag_set
@@ -133,12 +131,15 @@ class TemporalTrain(BaseTrain):
         total_time_loss = torch.Tensor([0])
         total_item_loss = torch.Tensor([0])
         total_lag_loss = torch.Tensor([0])
-        pbar = tqdm(enumerate(self.train_loader), total=len(self.train_loader),
-                    desc="({0:^3})".format(epoch))
+        if self.verbose:
+            pbar = tqdm(enumerate(self.train_loader), total=len(self.train_loader),
+                        desc="({0:^3})".format(epoch))
+        else:
+            pbar = enumerate(self.train_loader)
         for batch, ((row, col), val) in pbar:
-            row = row.to(device)
-            col = col.to(device)
-            val = val.to(device)
+            row = row.to(self.device)
+            col = col.to(self.device)
+            val = val.to(self.device)
             optimizer.zero_grad()
             pred = self.model(row, col)
             loss, item_loss, time_loss, lag_loss = self.get_loss(loss_func, row, col, pred, val)
@@ -151,11 +152,13 @@ class TemporalTrain(BaseTrain):
             total_lag_loss += lag_loss.item()
             total_time_loss += time_loss.item()
             batch_loss = loss.item()
-            pbar.set_postfix(train_loss=batch_loss)
-        print(total_loss[0] / self.train_num,
-              total_item_loss[0] / self.train_num,
-              total_time_loss[0] / self.train_num,
-              total_lag_loss[0] / self.train_num)
+            if self.verbose:
+                pbar.set_postfix(train_loss=batch_loss)
+        if self.verbose:
+            print(total_loss[0] / self.train_num,
+                  total_item_loss[0] / self.train_num,
+                  total_time_loss[0] / self.train_num,
+                  total_lag_loss[0] / self.train_num)
         total_loss /= (self.train_num)
         return total_loss[0]
 
@@ -163,9 +166,9 @@ class TemporalTrain(BaseTrain):
         self.model.eval()
         total_loss = torch.Tensor([0])
         for batch, ((row, col), val) in enumerate(iterator):
-            row = row.to(device)
-            col = col.to(device)
-            val = val.to(device)
+            row = row.to(self.device)
+            col = col.to(self.device)
+            val = val.to(self.device)
             pred = self.model(row, col)
             loss, _, _, _ = self.get_loss(loss_func, row, col, pred, val)
             total_loss += loss.item()
@@ -175,11 +178,11 @@ class TemporalTrain(BaseTrain):
     def test(self):
         self.model.eval()
         for (row, col), val in self.test_loader:
-            row = row.to(device)
-            col = col.to(device)
-            val = val.to(device)
+            row = row.to(self.device)
+            col = col.to(self.device)
+            val = val.to(self.device)
             #preds = self.model(row, col)
-            preds = self.model.predict(row, col)
+            preds = self.model.predict(row, col, self.device)
             count = 0
             for v, p in zip(val, preds):
                 print("actual: {:.5}, predict: {:.5}".format(v, p))

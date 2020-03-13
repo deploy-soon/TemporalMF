@@ -4,23 +4,22 @@ from torch import nn
 
 from temporal_model import TemporalTrain, TemporalMF
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 class LagRNN(nn.Module):
 
-    def __init__(self, factors, lag_set, hidden_dim, n_layers=1):
+    def __init__(self, factors, lag_set, hidden_dim, device, n_layers=1):
         super().__init__()
         lags = len(lag_set)
         self.lag_set = lag_set
         self.hidden_dim = hidden_dim
         self.n_layers = n_layers
+        self.device = device
 
         self.rnn = nn.RNN(factors, hidden_dim, n_layers, batch_first=True)
         self.fc = nn.Linear(hidden_dim, factors)
 
     def regularizer(self):
-        return torch.FloatTensor([0.0]).to(device)
+        return torch.FloatTensor([0.0]).to(self.device)
 
     def init_hidden(self, batch_size):
         hidden = torch.zeros(self.n_layers, batch_size, self.hidden_dim)
@@ -36,18 +35,19 @@ class LagRNN(nn.Module):
 
 class LagLSTM(nn.Module):
 
-    def __init__(self, factors, lag_set, hidden_dim, n_layers=1):
+    def __init__(self, factors, lag_set, hidden_dim, device, n_layers=1):
         super().__init__()
         lags = len(lag_set)
         self.lag_set = lag_set
         self.hidden_dim = hidden_dim
         self.n_layers = n_layers
+        self.device = device
 
         self.rnn = nn.LSTM(factors, hidden_dim, n_layers, batch_first=True)
         self.fc = nn.Linear(hidden_dim, factors)
 
     def regularizer(self):
-        return torch.FloatTensor([0.0]).to(device)
+        return torch.FloatTensor([0.0]).to(self.device)
 
     def forward(self, lags_vectors):
         batch_size = lags_vectors.size(0)
@@ -59,18 +59,19 @@ class LagLSTM(nn.Module):
 
 class LagGRU(nn.Module):
 
-    def __init__(self, factors, lag_set, hidden_dim, n_layers=1):
+    def __init__(self, factors, lag_set, hidden_dim, device, n_layers=1):
         super().__init__()
         lags = len(lag_set)
         self.lag_set = lag_set
         self.hidden_dim = hidden_dim
         self.n_layers = n_layers
+        self.device = device
 
         self.rnn = nn.GRU(factors, hidden_dim, n_layers, batch_first=True)
         self.fc = nn.Linear(hidden_dim, factors)
 
     def regularizer(self):
-        return torch.FloatTensor([0.0]).to(device)
+        return torch.FloatTensor([0.0]).to(self.device)
 
     def forward(self, lags_vectors):
         batch_size = lags_vectors.size(0)
@@ -86,11 +87,12 @@ class RNNMF(TemporalTrain):
         super().__init__(**kwargs)
         self.temporal_model = LagRNN(self.factors,
                                      self.lag_set,
-                                     hidden_dim).to(device)
+                                     hidden_dim,
+                                     self.device).to(self.device)
         self.model = TemporalMF(users=self.data.users,
                             items=self.data.items,
                             factors=self.factors,
-                            temporal_model=self.temporal_model).to(device)
+                            temporal_model=self.temporal_model).to(self.device)
 
 
 class LSTMMF(TemporalTrain):
@@ -99,11 +101,12 @@ class LSTMMF(TemporalTrain):
         super().__init__(**kwargs)
         self.temporal_model = LagLSTM(self.factors,
                                       self.lag_set,
-                                      hidden_dim).to(device)
+                                      hidden_dim,
+                                      self.device).to(self.device)
         self.model = TemporalMF(users=self.data.users,
                             items=self.data.items,
                             factors=self.factors,
-                            temporal_model=self.temporal_model).to(device)
+                            temporal_model=self.temporal_model).to(self.device)
 
 
 class GRUMF(TemporalTrain):
@@ -112,11 +115,12 @@ class GRUMF(TemporalTrain):
         super().__init__(**kwargs)
         self.temporal_model = LagGRU(self.factors,
                                      self.lag_set,
-                                     hidden_dim).to(device)
+                                     hidden_dim,
+                                     self.device).to(self.device)
         self.model = TemporalMF(users=self.data.users,
                             items=self.data.items,
                             factors=self.factors,
-                            temporal_model=self.temporal_model).to(device)
+                            temporal_model=self.temporal_model).to(self.device)
 
 
 if __name__ == "__main__":
