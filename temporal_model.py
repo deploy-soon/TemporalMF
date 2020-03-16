@@ -66,15 +66,16 @@ class TemporalMF(nn.Module):
 class TemporalTrain(BaseTrain):
 
     def __init__(self, lambda_x=0.5, lambda_f=0.005, lambda_theta=0.005, mu_x=0.005,
-                 lag_set = [1, 2, 3, 4, 5, 6], **kwargs):
+                 lags=1, **kwargs):
         super().__init__(**kwargs)
         self.lambda_x = lambda_x
         self.lambda_f = lambda_f
         self.lambda_theta = lambda_theta
         self.mu_x=mu_x
+        lag_set = list(range(1, lags+1))
         lag_set.sort()
         self.lag_set = lag_set
-        self.lags = len(lag_set)
+        self.lags = lags
         assert self.lags < self.data.users, "Lag set is too big"
 
         self.temporal_model = MatrixEmbedding(lag_set = self.lag_set,
