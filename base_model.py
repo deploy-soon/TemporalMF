@@ -62,7 +62,7 @@ class BaseTrain:
                  gpu=0,
                  verbose=False,
                  **kwargs):
-        self.model = self.__class__.__name__
+        self.name = self.__class__.__name__
         self.logger = get_logger(name=self.model)
         self.factors = factors
         self.batch_size = batch_size
