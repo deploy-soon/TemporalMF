@@ -63,7 +63,7 @@ class BaseTrain:
                  verbose=False,
                  **kwargs):
         self.name = self.__class__.__name__
-        self.logger = get_logger(name=self.model)
+        self.logger = get_logger(name=self.name)
         self.factors = factors
         self.batch_size = batch_size
         self.train_ratio = train_ratio

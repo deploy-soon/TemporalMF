@@ -85,7 +85,7 @@ class TemporalTrain(BaseTrain):
                             factors=self.factors,
                             temporal_model=self.temporal_model).to(self.device)
 
-    def get_loss(self, loss_func, row, col, pred, y):
+    def get_loss(self, loss_func, row, col, pred, y, is_sub=True):
         """
         loss function has four parts which contain inference and regularization.
         1. Products of time factor and item factor
@@ -112,7 +112,11 @@ class TemporalTrain(BaseTrain):
         filtered_row_lags = filtered_row.expand(self.lags, filtered_batch_num).transpose(1, 0)
         filtered_row_lags = filtered_row_lags - repeated_lag_set
         #filtered_row_lags = (batch, lags)
-        embedding_target = self.model.user_factor(filtered_row)
+        if is_sub:
+            filtered_row_one_prev = filtered_row - torch.LongTensor([1]).to(self.device)
+            embedding_target = self.model.user_factor(filtered_row) - self.model.user_factor(filtered_row_one_prev)
+        else:
+            embedding_target = self.model.user_factor(filtered_row)
         #embedding_target = (batch, factors)
         embedding_lags = self.model.user_factor(filtered_row_lags)
         #embedding_lags = (batch, lags, factors)
@@ -182,8 +186,8 @@ class TemporalTrain(BaseTrain):
             row = row.to(self.device)
             col = col.to(self.device)
             val = val.to(self.device)
-            #preds = self.model(row, col)
-            preds = self.model.predict(row, col, self.device)
+            preds = self.model(row, col)
+            #preds = self.model.predict(row, col, self.device)
             count = 0
             for v, p in zip(val, preds):
                 print("actual: {:.5}, predict: {:.5}".format(v, p))
