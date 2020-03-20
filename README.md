@@ -22,4 +22,10 @@ $ python temporal_model.py run
 $ python autoregressive_model.py vector run
 $ python autoregressive_model.py matrix run
 $ python autoregressive_model.py tensor run
+
+# train RNN
+$ python recurrent_model.py rnn run --lags=100
+$ python recurrent_model.py lstm run --hid_dim=128
+$ python recurrent_model.py gru run --n_layers=2
+
 ```
