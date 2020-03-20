@@ -7,7 +7,7 @@ from temporal_model import TemporalTrain, TemporalMF
 
 class LagRNN(nn.Module):
 
-    def __init__(self, factors, lag_set, hidden_dim, device, n_layers=1):
+    def __init__(self, factors, lag_set, hidden_dim, n_layers, dropout, device):
         super().__init__()
         lags = len(lag_set)
         self.lag_set = lag_set
@@ -15,7 +15,8 @@ class LagRNN(nn.Module):
         self.n_layers = n_layers
         self.device = device
 
-        self.rnn = nn.RNN(factors, hidden_dim, n_layers, batch_first=True)
+        self.rnn = nn.RNN(factors, hidden_dim, n_layers, dropout=dropout, batch_first=True)
+        self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(hidden_dim, factors)
 
     def regularizer(self):
@@ -27,7 +28,8 @@ class LagRNN(nn.Module):
     def forward(self, lags_vectors):
         batch_size = lags_vectors.size(0)
         hidden = self.init_hidden(batch_size)
-        out, hidden = self.rnn(lags_vectors, hidden)
+        embedded = self.dropout(lags_vectors)
+        out, hidden = self.rnn(embedded, hidden)
         out = out[:,-1,:]
         out = self.fc(out)
         return out
@@ -35,23 +37,23 @@ class LagRNN(nn.Module):
 
 class LagLSTM(nn.Module):
 
-    def __init__(self, factors, lag_set, hidden_dim, device, n_layers=1):
+    def __init__(self, factors, lag_set, hidden_dim, n_layers, dropout, device):
         super().__init__()
         lags = len(lag_set)
         self.lag_set = lag_set
         self.hidden_dim = hidden_dim
-        self.n_layers = n_layers
         self.device = device
 
-        self.rnn = nn.LSTM(factors, hidden_dim, n_layers, batch_first=True)
+        self.rnn = nn.LSTM(factors, hidden_dim, n_layers, dropout=dropout, batch_first=True)
+        self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(hidden_dim, factors)
 
     def regularizer(self):
         return torch.FloatTensor([0.0]).to(self.device)
 
     def forward(self, lags_vectors):
-        batch_size = lags_vectors.size(0)
-        out, (hidden, cell) = self.rnn(lags_vectors)
+        embedded = self.dropout(lags_vectors)
+        out, (hidden, cell) = self.rnn(embedded)
         out = out[:,-1,:]
         out = self.fc(out)
         return out
@@ -59,7 +61,7 @@ class LagLSTM(nn.Module):
 
 class LagGRU(nn.Module):
 
-    def __init__(self, factors, lag_set, hidden_dim, device, n_layers=1):
+    def __init__(self, factors, lag_set, hidden_dim, n_layers, dropout, device):
         super().__init__()
         lags = len(lag_set)
         self.lag_set = lag_set
@@ -67,15 +69,16 @@ class LagGRU(nn.Module):
         self.n_layers = n_layers
         self.device = device
 
-        self.rnn = nn.GRU(factors, hidden_dim, n_layers, batch_first=True)
+        self.rnn = nn.GRU(factors, hidden_dim, n_layers, dropout=dropout, batch_first=True)
+        self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(hidden_dim, factors)
 
     def regularizer(self):
         return torch.FloatTensor([0.0]).to(self.device)
 
     def forward(self, lags_vectors):
-        batch_size = lags_vectors.size(0)
-        out, hidden = self.rnn(lags_vectors)
+        embedded = self.dropout(lags_vectors)
+        out, hidden = self.rnn(embedded)
         out = out[:,-1,:]
         out = self.fc(out)
         return out
@@ -83,12 +86,16 @@ class LagGRU(nn.Module):
 
 class RNNMF(TemporalTrain):
 
-    def __init__(self, hidden_dim=64, **kwargs):
+    def __init__(self, hidden_dim=64, n_layers=1, dropout=0.3, **kwargs):
         super().__init__(**kwargs)
+        self.n_layers = n_layers
+        self.dropout = dropout
         self.temporal_model = LagRNN(self.factors,
                                      self.lag_set,
                                      hidden_dim,
-                                     self.device).to(self.device)
+                                     n_layers=self.n_layers,
+                                     dropout=self.dropout,
+                                     device=self.device).to(self.device)
         self.model = TemporalMF(users=self.data.users,
                             items=self.data.items,
                             factors=self.factors,
@@ -97,12 +104,16 @@ class RNNMF(TemporalTrain):
 
 class LSTMMF(TemporalTrain):
 
-    def __init__(self, hidden_dim=64, **kwargs):
+    def __init__(self, hidden_dim=64, n_layers=1, dropout=0.3, **kwargs):
         super().__init__(**kwargs)
+        self.n_layers = n_layers
+        self.dropout = dropout
         self.temporal_model = LagLSTM(self.factors,
                                       self.lag_set,
                                       hidden_dim,
-                                      self.device).to(self.device)
+                                      n_layers=self.n_layers,
+                                      dropout=self.dropout,
+                                      device=self.device).to(self.device)
         self.model = TemporalMF(users=self.data.users,
                             items=self.data.items,
                             factors=self.factors,
@@ -111,12 +122,16 @@ class LSTMMF(TemporalTrain):
 
 class GRUMF(TemporalTrain):
 
-    def __init__(self, hidden_dim=64, **kwargs):
+    def __init__(self, hidden_dim=64, n_layers=1, dropout=0.3, **kwargs):
         super().__init__(**kwargs)
+        self.n_layers = n_layers
+        self.dropout = dropout
         self.temporal_model = LagGRU(self.factors,
                                      self.lag_set,
                                      hidden_dim,
-                                     self.device).to(self.device)
+                                     n_layers=self.n_layers,
+                                     dropout=self.dropout,
+                                     device=self.device).to(self.device)
         self.model = TemporalMF(users=self.data.users,
                             items=self.data.items,
                             factors=self.factors,
