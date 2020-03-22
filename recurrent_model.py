@@ -88,6 +88,7 @@ class RNNMF(TemporalTrain):
 
     def __init__(self, hidden_dim=64, n_layers=1, dropout=0.3, **kwargs):
         super().__init__(**kwargs)
+        self.hidden_dim = hidden_dim
         self.n_layers = n_layers
         self.dropout = dropout
         self.temporal_model = LagRNN(self.factors,
@@ -106,6 +107,7 @@ class LSTMMF(TemporalTrain):
 
     def __init__(self, hidden_dim=64, n_layers=1, dropout=0.3, **kwargs):
         super().__init__(**kwargs)
+        self.hidden_dim = hidden_dim
         self.n_layers = n_layers
         self.dropout = dropout
         self.temporal_model = LagLSTM(self.factors,
@@ -124,6 +126,7 @@ class GRUMF(TemporalTrain):
 
     def __init__(self, hidden_dim=64, n_layers=1, dropout=0.3, **kwargs):
         super().__init__(**kwargs)
+        self.hidden_dim = hidden_dim
         self.n_layers = n_layers
         self.dropout = dropout
         self.temporal_model = LagGRU(self.factors,
