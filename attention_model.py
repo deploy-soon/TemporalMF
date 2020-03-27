@@ -25,13 +25,13 @@ class AttnLSTM(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         self.conv = nn.Conv2d(in_channels=1, out_channels=kernels,
-                              kernel_size=(1, lags-1), bias=False)
+                              kernel_size=(1, lags), bias=False)
 
         self.attn_weight = nn.Linear(kernels, hidden_dim, bias=False)
-        self.fc_v = nn.Linear(kernels, hidden_dim, bias=False)
-        self.fc_h = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.fc_v = nn.Linear(kernels, hidden_dim)
+        self.fc_h = nn.Linear(hidden_dim, hidden_dim)
 
-        self.fc = nn.Linear(hidden_dim, factors, bias=False)
+        self.fc = nn.Linear(hidden_dim * 2, factors, bias=False)
 
     def regularizer(self):
         return torch.FloatTensor([0.0]).to(self.device)
@@ -40,24 +40,28 @@ class AttnLSTM(nn.Module):
         # lags_vectors = (batch, lags, factors)
         embedded = self.dropout(lags_vectors)
         out, hidden = self.rnn(embedded)
-        # out = (batch, lags, hid_dim)
+        # out = (batch, lags, hidden_dim)
 
-        ipt_embedded = out[:, :-1, :].permute(0, 2, 1)
+        ipt_embedded = out.permute(0, 2, 1)
         ipt_embedded = ipt_embedded.unsqueeze(1)
-        # ipt_embedded = (batch, 1, hidden_dim, lags - 1)
+        # ipt_embedded = (batch, 1, hidden_dim, lags)
         opt_embedded = out[:, -1, :]
-        conv = self.conv(ipt_embedded)
-        # conv = (batch, kernels, hidden_dim, 1)
-        conv = conv.squeeze().permute(0, 2, 1)
+        # opt_embedded = (batch, hidden_dim)
+        conv = self.conv(ipt_embedded).squeeze()
+        # conv = (batch, kernels, hidden_dim)
+        conv = conv.permute(0, 2, 1)
         # conv = (batch, hidden_dim, kernels)
         attn_weight = self.attn_weight(conv)
+        # attn_weight = (batch, hidden_dim, hidden_dim)
         attn_weight = torch.bmm(attn_weight, opt_embedded.unsqueeze(2))
+        # attn_weight = (batch, hidden_dim, 1)
         attn_weight = torch.sigmoid(attn_weight)
+        # attn_weight = (batch, hidden_dim, 1)
         v = torch.sum(conv * attn_weight, dim=1)
 
         v = self.fc_v(v)
         h = self.fc_h(opt_embedded)
-        out = self.fc(v + h)
+        out = self.fc(torch.cat((v, h), dim=1))
         return out
 
 
@@ -74,13 +78,13 @@ class AttnEmbedding(nn.Module):
         self.device = device
 
         self.conv = nn.Conv2d(in_channels=1, out_channels=kernels,
-                              kernel_size=(1, lags-1), bias=False)
+                              kernel_size=(1, lags), bias=False)
 
         self.attn_weight = nn.Linear(kernels, factors, bias=False)
-        self.fc_v = nn.Linear(kernels, factors, bias=False)
-        self.fc_h = nn.Linear(factors, factors, bias=False)
+        self.fc_v = nn.Linear(kernels, factors)
+        self.fc_h = nn.Linear(factors, factors)
 
-        self.fc = nn.Linear(factors, factors, bias=False)
+        self.fc = nn.Linear(factors * 2, factors, bias=False)
 
     def regularizer(self):
         return torch.FloatTensor([0.0]).to(self.device)
@@ -88,7 +92,7 @@ class AttnEmbedding(nn.Module):
     def forward(self, lags_vectors):
         # lags_vectors = (batch, lags, factors)
 
-        ipt_embedded = lags_vectors[:, :-1, :].permute(0, 2, 1)
+        ipt_embedded = lags_vectors.permute(0, 2, 1)
         ipt_embedded = ipt_embedded.unsqueeze(1)
         # ipt_embedded = (batch, 1, factors, lags - 1)
         opt_embedded = lags_vectors[:, -1, :]
@@ -103,13 +107,13 @@ class AttnEmbedding(nn.Module):
 
         v = self.fc_v(v)
         h = self.fc_h(opt_embedded)
-        out = self.fc(v + h)
+        out = self.fc(torch.cat((v, h), dim=1))
         return out
 
 
 class AttnLSTMMF(TemporalTrain):
 
-    def __init__(self, hidden_dim=64, n_layers=1, kernels=64, dropout=0.3, **kwargs):
+    def __init__(self, hidden_dim=128, n_layers=1, kernels=64, dropout=0.3, **kwargs):
         super().__init__(**kwargs)
         self.n_layers = n_layers
         self.hidden_dim=hidden_dim
