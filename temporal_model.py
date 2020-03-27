@@ -66,7 +66,7 @@ class TemporalMF(nn.Module):
 class TemporalTrain(BaseTrain):
 
     def __init__(self, lambda_x=0.5, lambda_f=0.005, lambda_theta=0.005, mu_x=0.005,
-                 lags=1, **kwargs):
+                 lags=100, is_pred_sub=True, **kwargs):
         super().__init__(**kwargs)
         self.lambda_x = lambda_x
         self.lambda_f = lambda_f
@@ -76,6 +76,7 @@ class TemporalTrain(BaseTrain):
         lag_set.sort()
         self.lag_set = lag_set
         self.lags = lags
+        self.is_pred_sub = is_pred_sub
         assert self.lags < self.data.users, "Lag set is too big"
 
         self.temporal_model = MatrixEmbedding(lag_set = self.lag_set,
@@ -85,7 +86,7 @@ class TemporalTrain(BaseTrain):
                             factors=self.factors,
                             temporal_model=self.temporal_model).to(self.device)
 
-    def get_loss(self, loss_func, row, col, pred, y, is_sub=True):
+    def get_loss(self, loss_func, row, col, pred, y, is_pred_sub=True):
         """
         loss function has four parts which contain inference and regularization.
         1. Products of time factor and item factor
@@ -112,7 +113,7 @@ class TemporalTrain(BaseTrain):
         filtered_row_lags = filtered_row.expand(self.lags, filtered_batch_num).transpose(1, 0)
         filtered_row_lags = filtered_row_lags - repeated_lag_set
         #filtered_row_lags = (batch, lags)
-        if is_sub:
+        if is_pred_sub:
             filtered_row_one_prev = filtered_row - torch.LongTensor([1]).to(self.device)
             embedding_target = self.model.user_factor(filtered_row) - self.model.user_factor(filtered_row_one_prev)
         else:
@@ -147,7 +148,8 @@ class TemporalTrain(BaseTrain):
             val = val.to(self.device)
             optimizer.zero_grad()
             pred = self.model(row, col)
-            loss, item_loss, time_loss, lag_loss = self.get_loss(loss_func, row, col, pred, val)
+            loss, item_loss, time_loss, lag_loss = self.get_loss(loss_func,
+                    row, col, pred, val, self.is_pred_sub)
             cost_func = loss + item_loss + time_loss + lag_loss
             cost_func.backward()
             optimizer.step()

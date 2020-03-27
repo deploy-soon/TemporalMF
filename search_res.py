@@ -4,6 +4,7 @@ import json
 
 def get_res_list(data_name):
     file_list = os.listdir(os.path.join("res", data_name))
+    file_list = sorted(file_list, reverse=True)
     return file_list
 
 def load_json(file_path):
@@ -18,7 +19,7 @@ def load_res(data_name):
     return res
 
 def check(row, col, args, res):
-    def _check_dict(condition, total):
+    def _check_dict(total, condition):    
         for key, value in condition.items():
             if key not in total:
                 return False
@@ -26,9 +27,9 @@ def check(row, col, args, res):
                 return False
         return True
 
+    res = [r for r in res if _check_dict(r, args)]
     res = [r for r in res if _check_dict(r, row)]
     res = [r for r in res if _check_dict(r, col)]
-    res = [r for r in res if _check_dict(r, args)]
     return res[0] if res else {}
 
 def print_res(rows, cols, data_name, base_args, sep="\t"):
@@ -44,7 +45,7 @@ def print_res(rows, cols, data_name, base_args, sep="\t"):
             _opt += print_item(i)
         return _opt
 
-    opt = print_header(cols)
+    opt = print_header(cols, sep)
     opt += "\n"
     res = load_res(data_name)
     for row in rows:
@@ -63,13 +64,18 @@ def print_res(rows, cols, data_name, base_args, sep="\t"):
 
 if __name__ == "__main__":
     _rows = [
-        dict(epochs=1),
+        dict(name="VectorMF"),
+        dict(name="MatrixMF"),
+        dict(name="TensorMF"),
+        dict(name="MLPVectorMF"),
+        dict(name="MLPMatrixMF"),
+        dict(name="MLPTensorMF"),
     ]
     _cols = [
-        dict(factors=20),
         dict(factors=40),
+        dict(factors=80),
     ]
     _data_name = "solar"
-    _base_args = dict()
-    print_res(_rows, _cols, _data_name, _base_args)
+    _base_args = dict(lambda_x=5.0, is_pred_sub=True)
+    print_res(_rows, _cols, _data_name, _base_args, sep="|")
 

@@ -160,7 +160,7 @@ class BaseTrain:
     def get_hyperparameter(self):
         hyperparam = dict()
         for key, value in self.__dict__.items():
-            if isinstance(value, (str, int, float)):
+            if isinstance(value, (str, int, float, bool)):
                 hyperparam[key] = value
         hyperparam_list = ["{}: {}".format(k, v) for k, v in hyperparam.items()]
         self.logger.info(",".join(hyperparam_list))
