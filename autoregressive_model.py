@@ -35,7 +35,8 @@ class MLPVectorEmbedding(nn.Module):
         self.device = device
 
         self.fc1 = nn.Linear(lags, hid_dim)
-        self.fc2 = nn.Linear(hid_dim, 1)
+        self.fc2 = nn.Linear(hid_dim, 1, bias=False)
+        self.relu = nn.ReLU()
 
     def regularizer(self):
         return torch.FloatTensor([0.0]).to(self.device)
@@ -44,6 +45,7 @@ class MLPVectorEmbedding(nn.Module):
         lags_vectors = lags_vectors.permute(0, 2, 1)
         #lags_vectors = (batch, factors, lags)
         target_vectors = self.fc1(lags_vectors)
+        target_vectors = self.relu(target_vectors)
         # target_vectros = (batch, factors, hid_dim)
         target_vectors = self.fc2(target_vectors)
         # target_vectors = (batch, factors, 1)
@@ -84,7 +86,7 @@ class MLPMatrixEmbedding(nn.Module):
                 nn.Sequential(
                     nn.Linear(lags, hid_dim),
                     nn.ReLU(inplace=True),
-                    nn.Linear(hid_dim, 1)
+                    nn.Linear(hid_dim, 1, bias=False)
                 )
             )
 
@@ -136,7 +138,8 @@ class MLPTensorEmbedding(nn.Module):
         self.device = device
 
         self.fc1 = nn.Linear(lags * factors, hid_dim)
-        self.fc2 = nn.Linear(hid_dim, factors)
+        self.fc2 = nn.Linear(hid_dim, factors, bias=False)
+        self.relu = nn.ReLU()
 
     def regularizer(self):
         return torch.FloatTensor([0.0]).to(self.device)
@@ -146,6 +149,7 @@ class MLPTensorEmbedding(nn.Module):
         lags_vector = lags_vectors.view(-1, self.factors * self.lags)
         # lags_vector = (batch, factors * lags)
         target_vectors = self.fc1(lags_vector)
+        target_vectors = self.relu(target_vectors)
         # target_vectros = (batch, hid_dim)
         target_vectors = self.fc2(target_vectors)
         # target_vectors = (batch, factors)
