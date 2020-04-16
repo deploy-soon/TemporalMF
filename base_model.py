@@ -100,6 +100,11 @@ class BaseTrain:
     def get_loss(self, loss_func, row, col, pred, y):
         raise NotImplemented
 
+    def denormalized(self, val, col):
+        for i, c in enumerate(col):
+            val[i] = self.data.denormalize(val[i], c)
+        return val
+
     def train(self, epoch, loss_func, optimizer):
         self.model.train()
 
@@ -126,7 +131,7 @@ class BaseTrain:
         total_loss /= (self.train_num)
         return total_loss[0]
 
-    def validate(self, epoch, iterator, loss_func):
+    def validate(self, epoch, iterator, loss_func, denormalize=False):
         self.model.eval()
         total_loss = torch.Tensor([0])
         for batch, ((row, col), val) in enumerate(iterator):
@@ -134,7 +139,12 @@ class BaseTrain:
             col = col.to(self.device)
             val = val.to(self.device)
             pred = self.model(row, col)
-            mse, loss = self.get_loss(loss_func, row, col, pred, val)
+            if denormalize:
+                pred = self.denormalized(pred, col)
+                val = self.denormalized(val, col)
+                mse, _ = self.get_loss(loss_func, row, col, pred, val)
+            else:
+                mse, _ = self.get_loss(loss_func, row, col, pred, val)
             total_loss += mse.item()
         total_loss /= len(iterator)
         return total_loss[0]
@@ -175,7 +185,10 @@ class BaseTrain:
             train_abs += torch.sum(val.abs()) / self.train_num
         for (row, col), val in self.vali_loader:
             vali_abs += torch.sum(val.abs()) / self.vali_num
+        # get denormalized test nrmse
+        # TODO: train, validate?
         for (row, col), val in self.test_loader:
+            val = self.denormalized(val, col)
             test_abs += torch.sum(val.abs()) / self.test_num
 
         self.train_abs = train_abs
@@ -208,7 +221,7 @@ class BaseTrain:
             if epoch_vali_loss < vali_nrmse:
                 vali_nrmse = epoch_vali_loss
                 train_nrmse = epoch_train_loss
-                test_mse = self.validate(epoch, self.test_loader, loss_func)
+                test_mse = self.validate(epoch, self.test_loader, loss_func, denormalize=True)
                 test_nrmse = torch.sqrt(test_mse) / self.test_abs
             if self.verbose:
                 print("train loss: {:.4} vali loss: {:.4}".format(epoch_train_loss, epoch_vali_loss))

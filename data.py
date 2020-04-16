@@ -4,9 +4,10 @@ from torch.utils.data import Dataset
 
 
 def col_normalize(array, nor_dim=0):
+    mean = array.mean(axis=0)
     std = np.std(array, axis=0)
-    normalized = (array - array.mean(axis=0)) / std
-    return normalized
+    normalized = (array - mean) / std
+    return normalized, mean, std
 
 def col_min_max(array, _min=0, _max=1):
     nom = (array - array.min(axis=0)) * (_max - _min)
@@ -24,13 +25,19 @@ class COOMatrix(Dataset):
         file_path = pjoin("data", self.file_name)
         with open(file_path, "r") as fin:
             array = np.loadtxt(fin, delimiter=",")
-            array = col_normalize(array)
+            array, mean, std = col_normalize(array)
+            self.mean = mean
+            self.std = std
         shape = array.shape
         self.users = shape[0]
         self.items = shape[1]
         self.data_len = self.users * self.items
         self.data = array
         print("load data: {}".format(shape))
+
+    def denormalize(self, item, col):
+        col = col.item()
+        return self.mean[col] + item * self.std[col]
 
     def __getitem__(self, index):
         assert index < self.data_len
