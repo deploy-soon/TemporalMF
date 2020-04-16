@@ -16,13 +16,14 @@ def col_min_max(array, _min=0, _max=1):
 
 class COOMatrix(Dataset):
 
-    def __init__(self, file_name, norm=True):
+    def __init__(self, file_name, data_path="../data", norm=True):
+        self.data_path = data_path
         self.file_name = file_name
         self.load_txt()
         self.norm = norm
 
     def load_txt(self):
-        file_path = pjoin("data", self.file_name)
+        file_path = pjoin(self.data_path, self.file_name)
         with open(file_path, "r") as fin:
             array = np.loadtxt(fin, delimiter=",")
             array, mean, std = col_normalize(array)

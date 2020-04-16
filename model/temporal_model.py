@@ -169,7 +169,7 @@ class TemporalTrain(BaseTrain):
         total_loss /= (self.train_num)
         return total_loss[0]
 
-    def validate(self, epoch, iterator, loss_func):
+    def validate(self, epoch, iterator, loss_func, denormalize=False):
         self.model.eval()
         total_loss = torch.Tensor([0])
         for batch, ((row, col), val) in enumerate(iterator):
@@ -177,9 +177,14 @@ class TemporalTrain(BaseTrain):
             col = col.to(self.device)
             val = val.to(self.device)
             pred = self.model(row, col)
-            loss, _, _, _ = self.get_loss(loss_func, row, col, pred, val)
+            if denormalize:
+                pred = self.denormalized(pred, col)
+                val = self.denormalized(val, col)
+                loss, _, _, _ = self.get_loss(loss_func, row, col, pred, val)
+            else:
+                loss, _, _, _ = self.get_loss(loss_func, row, col, pred, val)
             total_loss += loss.item()
-        total_loss /= (self.vali_num)
+        total_loss /= (len(iterator) * self.batch_size)
         return total_loss[0]
 
     def test(self):

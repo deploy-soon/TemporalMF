@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import fire
 import datetime
@@ -9,6 +10,7 @@ import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader, random_split
 
+sys.path.append("../")
 from data import COOMatrix
 from misc import get_logger
 
@@ -146,7 +148,7 @@ class BaseTrain:
             else:
                 mse, _ = self.get_loss(loss_func, row, col, pred, val)
             total_loss += mse.item()
-        total_loss /= len(iterator)
+        total_loss /= (len(iterator) * self.batch_size)
         return total_loss[0]
 
     def test(self):
