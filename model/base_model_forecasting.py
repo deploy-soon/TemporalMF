@@ -107,6 +107,13 @@ class TemporalMF(nn.Module):
         preds = torch.mm(self.user_factor(user), self.item_factor.weight.T)
         return preds
 
+def init_weights(modules):
+    for m in modules:
+        if isinstance(m, nn.Embedding):
+            m.weight.data.normal_(0, 0.01)
+        if isinstance(m, nn.Parameter):
+            m.data.normal_(0, 0.01)
+
 
 class BaseTrain(metaclass=abc.ABCMeta):
 
@@ -122,20 +129,22 @@ class BaseTrain(metaclass=abc.ABCMeta):
                  gpu=0,
                  verbose=False,
                  lambda_x=0.5, lambda_f=0.005, lambda_theta=0.005, mu_x=0.005,
-                 lag_set=list(range(24)) + list(range(24 * 7, 24 * 8))
+                 lag_set=list(range(24)) + list(range(24 * 7, 24 * 8)),
                  is_pred_sub=True, **kwargs):
         super().__init__(**kwargs)
         self.name = self.__class__.__name__
         self.logger = get_logger(name=self.name)
         self.factors = factors
         self.batch_size = batch_size
-        self.train_ratio = train_ratio
         self.learning_rate = learning_rate
         self.file_name=file_name
         self.data = COOMatrixForecasting(file_name)
 
         data_len = len(self.data)
-        self.train_num = data_len - window_size * (nr_windows_vali + nr_window_test)
+        self.window_size = window_size
+        self.nr_windows_vali = nr_windows_vali
+        self.nr_windows_test = nr_windows_test
+        self.train_num = data_len - window_size * (nr_windows_vali + nr_windows_test)
         self.vali_num = window_size * nr_windows_vali
         self.test_num = window_size * nr_windows_test
         self.logger.debug("TRAIN NUM: {} VALIDATION NUM: {} TEST_NUM: {}"
@@ -332,19 +341,22 @@ class BaseTrain(metaclass=abc.ABCMeta):
                                      lr=self.learning_rate,
                                      weight_decay=0)
         print(self.model)
-        self._cache_l1_norm()
         self.num_params = self.count_parameters()
 
-        trues_vali, preds_vali = None, :None
-        for w in range(nr_windows_vali):
-            nr_windows = nr_windwows_vali + nr_windows_test
-            train_num = len(self.data) - self.window * (nr_windows + w)
-            train_set = Subset(self.data, list(range(self.train_num)))
-            vali_set = Subset(self.data, list(range(self.train_num, self.train_num+self.window)))
-            self.train_loader = DataLoader(train_set, batch_size=batch_size,
+        trues_vali, preds_vali = None, None
+        for w in range(self.nr_windows_vali):
+            init_weights(self.model.modules())
+            init_weights(self.temporal_model.modules())
+            nr_windows = self.nr_windows_vali + self.nr_windows_test
+            train_num = len(self.data) - self.window_size * (nr_windows - w)
+            print("train num: ", train_num)
+            train_set = Subset(self.data, list(range(train_num)))
+            vali_set = Subset(self.data, list(range(train_num, train_num+self.window_size)))
+            self.train_loader = DataLoader(train_set, batch_size=self.batch_size,
                                        shuffle=True)
-            self.vali_loader = DataLoader(vali_set, batch_size=self.window,
+            self.vali_loader = DataLoader(vali_set, batch_size=self.window_size,
                                       shuffle=False)
+            self._cache_l1_norm()
 
             train_nrmse, vali_nrmse, vali_ori_nrmse = 0.0, 99999.0, 0.0
             for epoch in range(self.epochs):
@@ -358,7 +370,10 @@ class BaseTrain(metaclass=abc.ABCMeta):
             vali_mse, true, pred = self.validate(epoch, self.vali_loader, loss_func)
             preds_vali = pred if preds_vali is None else torch.cat((preds_vali, pred), 0)
             trues_vali = true if trues_vali is None else torch.cat((trues_vali, true), 0)
-        nrmse = torch.sqrt(torch.sum((preds_vali-trues_vali)**2))/torch.sum(torch.abs(trues_vali))
+        #print(preds_vali)
+        #print(trues_vali)
+        #print(preds_vali.size(), trues_vali.size())
+        nrmse = torch.sqrt(torch.mean((preds_vali-trues_vali)**2))/torch.mean(torch.abs(trues_vali))
         print(nrmse)
 
         hyperparams = self.get_hyperparameter()
@@ -367,8 +382,8 @@ class BaseTrain(metaclass=abc.ABCMeta):
             "vali_loss": float(vali_nrmse),
             "vali_ori_loss": float(vali_ori_nrmse),
         })
-        self.logger.info("train_loss: {:.5}, vali_loss: {:.5}, origin_loss: {:.5}"
-                         .format(train_nrmse, vali_nrmse, vali_ori_nrmse))
+        #self.logger.info("train_loss: {:.5}, vali_loss: {:.5}, origin_loss: {:.5}"
+        #                 .format(train_nrmse, vali_nrmse, vali_ori_nrmse))
         self.save_snapshot(hyperparams)
 
 
@@ -385,6 +400,6 @@ class Train(BaseTrain):
 
 if __name__ == "__main__":
     #fire.Fire(Train)
-    train = BaseTrain(verbose=True, file_name="electricity", train_ratio=0.9936131387, lags=48, epochs=150, factors=40)
+    train = BaseTrain(file_name="electricity", epochs=150, factors=40, verbose=False)
     train.run()
 

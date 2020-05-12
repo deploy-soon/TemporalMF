@@ -117,6 +117,7 @@ class BaseTrain:
         else:
             pbar = enumerate(self.train_loader)
 
+        abs_diff, abs_true, mse_diff = torch.Tensor([0]), torch.Tensor([0]), torch.Tensor([0])
         for batch, ((row, col), val) in pbar:
             row = row.to(self.device)
             col = col.to(self.device)
@@ -126,30 +127,44 @@ class BaseTrain:
             mse, loss = self.get_loss(loss_func, row, col, pred, val)
             loss.backward()
             optimizer.step()
-            total_loss += mse.item()
+            #total_loss += mse.item()
             batch_loss = loss.item()
+            pred = self.denormalized(pred, col)
+            val = self.denormalized(val, col)
+            abs_diff += torch.sum(torch.abs(pred-val))
+            abs_true += torch.sum(torch.abs(val))
+            mse_diff += torch.sum((pred-val)**2)
             if self.verbose:
                 pbar.set_postfix(train_loss=batch_loss)
-        total_loss /= (self.train_num)
-        return total_loss[0]
 
-    def validate(self, epoch, iterator, loss_func, denormalize=False):
+        nd = abs_diff / abs_true
+        nrmse = torch.sqrt(mse_diff * self.train_num) / abs_true
+        #print(nd, nrmse)
+        return nd, nrmse
+        #total_loss /= (self.train_num)
+        #return total_loss[0]
+
+    def validate(self, epoch, iterator, loss_func):
         self.model.eval()
         total_loss = torch.Tensor([0])
+        abs_diff, abs_true, mse_diff = torch.Tensor([0]), torch.Tensor([0]), torch.Tensor([0])
         for batch, ((row, col), val) in enumerate(iterator):
             row = row.to(self.device)
             col = col.to(self.device)
             val = val.to(self.device)
             pred = self.model(row, col)
-            if denormalize:
-                pred = self.denormalized(pred, col)
-                val = self.denormalized(val, col)
-                mse, _ = self.get_loss(loss_func, row, col, pred, val)
-            else:
-                mse, _ = self.get_loss(loss_func, row, col, pred, val)
-            total_loss += mse.item()
-        total_loss /= (len(iterator) * self.batch_size)
-        return total_loss[0]
+            pred = self.denormalized(pred, col)
+            val = self.denormalized(val, col)
+            abs_diff += torch.sum(torch.abs(pred-val))
+            abs_true += torch.sum(torch.abs(val))
+            mse_diff += torch.sum((pred-val)**2)
+            #mse, _ = self.get_loss(loss_func, row, col, pred, val)
+            #total_loss += mse.item()
+        #total_loss /= (len(iterator) * self.batch_size)
+        nd = abs_diff / abs_true
+        nrmse = torch.sqrt(mse_diff * len(iterator) * self.batch_size) / abs_true
+        #print(nd, nrmse)
+        return nd, nrmse
 
     def test(self):
         self.model.eval()
@@ -178,26 +193,6 @@ class BaseTrain:
         self.logger.info(",".join(hyperparam_list))
         return hyperparam
 
-    def _cache_l1_norm(self):
-        # to get NRMSE at each epoch
-        train_abs = 0.0
-        vali_abs = 0.0
-        test_abs = 0.0
-        for (row, col), val in self.train_loader:
-            train_abs += torch.sum(val.abs()) / self.train_num
-        for (row, col), val in self.vali_loader:
-            vali_abs += torch.sum(val.abs()) / self.vali_num
-        # get denormalized test nrmse
-        # TODO: train, validate?
-        for (row, col), val in self.test_loader:
-            val = self.denormalized(val, col)
-            test_abs += torch.sum(val.abs()) / self.test_num
-
-        self.train_abs = train_abs
-        self.vali_abs = vali_abs
-        self.test_abs = test_abs
-        self.logger.debug("absolute value: {:.5}, {:.5}, {:.5}".format(train_abs, vali_abs, test_abs))
-
     def save_snapshot(self, info):
         now = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
         res_path = pjoin("res", self.file_name, "{}.json".format(now))
@@ -211,22 +206,20 @@ class BaseTrain:
                                      lr=self.learning_rate,
                                      weight_decay=0)
         print(self.model)
-        self._cache_l1_norm()
         self.num_params = self.count_parameters()
 
         train_nrmse, vali_nrmse, test_nrmse = 0.0, 99999.0, 0.0
         for epoch in range(self.epochs):
-            train_mse = self.train(epoch, loss_func, optimizer)
-            vali_mse = self.validate(epoch, self.vali_loader, loss_func)
-            epoch_train_loss = torch.sqrt(train_mse) / self.train_abs
-            epoch_vali_loss = torch.sqrt(vali_mse) / self.vali_abs
-            if epoch_vali_loss < vali_nrmse:
-                vali_nrmse = epoch_vali_loss
-                train_nrmse = epoch_train_loss
-                test_mse = self.validate(epoch, self.test_loader, loss_func, denormalize=True)
-                test_nrmse = torch.sqrt(test_mse) / self.test_abs
+            #train_mse = self.train(epoch, loss_func, optimizer)
+            #vali_mse = self.validate(epoch, self.vali_loader, loss_func)
+            _train_nd, _train_nrmse = self.train(epoch, loss_func, optimizer)
+            _vali_nd, _vali_nrmse = self.validate(epoch, self.vali_loader, loss_func)
+            if _vali_nrmse < vali_nrmse:
+                vali_nrmse = _vali_nrmse
+                train_nrmse = _train_nrmse
+                test_nd, test_nrmse = self.validate(epoch, self.test_loader, loss_func)
             if self.verbose:
-                print("train loss: {:.4} vali loss: {:.4}".format(epoch_train_loss, epoch_vali_loss))
+                print("trn loss: {:.4} vali loss:{:.4}".format(float(train_nrmse), float(vali_nrmse)))
         hyperparams = self.get_hyperparameter()
         hyperparams.update({
             "train_loss": float(train_nrmse),
@@ -234,7 +227,7 @@ class BaseTrain:
             "test_loss": float(test_nrmse),
         })
         self.logger.info("train_loss: {:.5}, vali_loss: {:.5}, test_loss: {:.5}"
-                         .format(train_nrmse, vali_nrmse, test_nrmse))
+                         .format(float(train_nrmse), float(vali_nrmse), float(test_nrmse)))
         self.save_snapshot(hyperparams)
 
         if self.verbose:
