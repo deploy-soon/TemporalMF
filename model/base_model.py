@@ -127,7 +127,6 @@ class BaseTrain:
             mse, loss = self.get_loss(loss_func, row, col, pred, val)
             loss.backward()
             optimizer.step()
-            #total_loss += mse.item()
             batch_loss = loss.item()
             pred = self.denormalized(pred, col)
             val = self.denormalized(val, col)
@@ -139,10 +138,7 @@ class BaseTrain:
 
         nd = abs_diff / abs_true
         nrmse = torch.sqrt(mse_diff * self.train_num) / abs_true
-        #print(nd, nrmse)
         return nd, nrmse
-        #total_loss /= (self.train_num)
-        #return total_loss[0]
 
     def validate(self, epoch, iterator, loss_func):
         self.model.eval()
@@ -158,12 +154,8 @@ class BaseTrain:
             abs_diff += torch.sum(torch.abs(pred-val))
             abs_true += torch.sum(torch.abs(val))
             mse_diff += torch.sum((pred-val)**2)
-            #mse, _ = self.get_loss(loss_func, row, col, pred, val)
-            #total_loss += mse.item()
-        #total_loss /= (len(iterator) * self.batch_size)
         nd = abs_diff / abs_true
         nrmse = torch.sqrt(mse_diff * len(iterator) * self.batch_size) / abs_true
-        #print(nd, nrmse)
         return nd, nrmse
 
     def test(self):
@@ -210,8 +202,6 @@ class BaseTrain:
 
         train_nrmse, vali_nrmse, test_nrmse = 0.0, 99999.0, 0.0
         for epoch in range(self.epochs):
-            #train_mse = self.train(epoch, loss_func, optimizer)
-            #vali_mse = self.validate(epoch, self.vali_loader, loss_func)
             _train_nd, _train_nrmse = self.train(epoch, loss_func, optimizer)
             _vali_nd, _vali_nrmse = self.validate(epoch, self.vali_loader, loss_func)
             if _vali_nrmse < vali_nrmse:

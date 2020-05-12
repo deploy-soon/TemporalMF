@@ -137,6 +137,7 @@ class TemporalTrain(BaseTrain):
         total_time_loss = torch.Tensor([0])
         total_item_loss = torch.Tensor([0])
         total_lag_loss = torch.Tensor([0])
+        abs_diff, abs_true, mse_diff = torch.Tensor([0]), torch.Tensor([0]), torch.Tensor([0])
         if self.verbose:
             pbar = tqdm(enumerate(self.train_loader), total=len(self.train_loader),
                         desc="({0:^3})".format(epoch))
@@ -159,6 +160,11 @@ class TemporalTrain(BaseTrain):
             total_lag_loss += lag_loss.item()
             total_time_loss += time_loss.item()
             batch_loss = loss.item()
+            pred = self.denormalized(pred, col)
+            val = self.denormalized(val, col)
+            abs_diff += torch.sum(torch.abs(pred-val))
+            abs_true += torch.sum(torch.abs(val))
+            mse_diff += torch.sum((pred-val)**2)
             if self.verbose:
                 pbar.set_postfix(train_loss=batch_loss)
         if self.verbose:
@@ -166,26 +172,9 @@ class TemporalTrain(BaseTrain):
                   total_item_loss[0] / self.train_num,
                   total_time_loss[0] / self.train_num,
                   total_lag_loss[0] / self.train_num)
-        total_loss /= (self.train_num)
-        return total_loss[0]
-
-    def validate(self, epoch, iterator, loss_func, denormalize=False):
-        self.model.eval()
-        total_loss = torch.Tensor([0])
-        for batch, ((row, col), val) in enumerate(iterator):
-            row = row.to(self.device)
-            col = col.to(self.device)
-            val = val.to(self.device)
-            pred = self.model(row, col)
-            if denormalize:
-                pred = self.denormalized(pred, col)
-                val = self.denormalized(val, col)
-                loss, _, _, _ = self.get_loss(loss_func, row, col, pred, val)
-            else:
-                loss, _, _, _ = self.get_loss(loss_func, row, col, pred, val)
-            total_loss += loss.item()
-        total_loss /= (len(iterator) * self.batch_size)
-        return total_loss[0]
+        nd = abs_diff / abs_true
+        nrmse = torch.sqrt(mse_diff * self.train_num) / abs_true
+        return nd, nrmse
 
     def test(self):
         self.model.eval()
