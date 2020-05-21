@@ -128,53 +128,8 @@ class TemporalTrain(BaseTrain):
 
         time_loss = self.lambda_x * time_loss + self.mu_x * torch.sum(self.model.user_factor(row) ** 2)
 
-        return loss, item_loss, time_loss, lag_loss
-
-    def train(self, epoch, loss_func, optimizer):
-        self.model.train()
-
-        total_loss = torch.Tensor([0])
-        total_time_loss = torch.Tensor([0])
-        total_item_loss = torch.Tensor([0])
-        total_lag_loss = torch.Tensor([0])
-        abs_diff, abs_true, mse_diff = torch.Tensor([0]), torch.Tensor([0]), torch.Tensor([0])
-        if self.verbose:
-            pbar = tqdm(enumerate(self.train_loader), total=len(self.train_loader),
-                        desc="({0:^3})".format(epoch))
-        else:
-            pbar = enumerate(self.train_loader)
-        for batch, ((row, col), val) in pbar:
-            row = row.to(self.device)
-            col = col.to(self.device)
-            val = val.to(self.device)
-            optimizer.zero_grad()
-            pred = self.model(row, col)
-            loss, item_loss, time_loss, lag_loss = self.get_loss(loss_func,
-                    row, col, pred, val, self.is_pred_sub)
-            cost_func = loss + item_loss + time_loss + lag_loss
-            cost_func.backward()
-            optimizer.step()
-
-            total_loss += loss.item()
-            total_item_loss += item_loss.item()
-            total_lag_loss += lag_loss.item()
-            total_time_loss += time_loss.item()
-            batch_loss = loss.item()
-            pred = self.denormalized(pred, col)
-            val = self.denormalized(val, col)
-            abs_diff += torch.sum(torch.abs(pred-val))
-            abs_true += torch.sum(torch.abs(val))
-            mse_diff += torch.sum((pred-val)**2)
-            if self.verbose:
-                pbar.set_postfix(train_loss=batch_loss)
-        if self.verbose:
-            print(total_loss[0] / self.train_num,
-                  total_item_loss[0] / self.train_num,
-                  total_time_loss[0] / self.train_num,
-                  total_lag_loss[0] / self.train_num)
-        nd = abs_diff / abs_true
-        nrmse = torch.sqrt(mse_diff * self.train_num) / abs_true
-        return nd, nrmse
+        #return loss, item_loss, time_loss, lag_loss
+        return loss, loss+item_loss+time_loss+lag_loss
 
     def test(self):
         self.model.eval()

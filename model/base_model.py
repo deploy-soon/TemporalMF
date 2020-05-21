@@ -15,6 +15,28 @@ from data import COOMatrix
 from misc import get_logger
 
 
+def get_rse(y_true, y_pred):
+    y_mean = torch.mean(y_pred)
+    rse = torch.sqrt(torch.sum((y_pred-y_true)**2)) /\
+        torch.sqrt(torch.sum((y_pred-y_mean)**2))
+    return rse
+
+def get_rae(y_true, y_pred):
+    y_mean = torch.mean(y_pred)
+    rae = torch.sum(torch.abs(y_pred-y_true)) /\
+        torch.sum(torch.abs(y_pred-y_mean))
+    return rae
+
+def get_corr(y_true, y_pred):
+    pass
+
+
+def get_metric(y_true, y_pred):
+    rse = get_rse(y_true, y_pred)
+    rae = get_rae(y_true, y_pred)
+    return dict(rse=rse, rae=rae)
+
+
 class BaseMF(nn.Module):
 
     def __init__(self, users, items, factors):
@@ -117,7 +139,6 @@ class BaseTrain:
         else:
             pbar = enumerate(self.train_loader)
 
-        abs_diff, abs_true, mse_diff = torch.Tensor([0]), torch.Tensor([0]), torch.Tensor([0])
         for batch, ((row, col), val) in pbar:
             row = row.to(self.device)
             col = col.to(self.device)
@@ -125,38 +146,34 @@ class BaseTrain:
             optimizer.zero_grad()
             pred = self.model(row, col)
             mse, loss = self.get_loss(loss_func, row, col, pred, val)
+            loss = loss + mse
             loss.backward()
             optimizer.step()
             batch_loss = loss.item()
-            pred = self.denormalized(pred, col)
-            val = self.denormalized(val, col)
-            abs_diff += torch.sum(torch.abs(pred-val))
-            abs_true += torch.sum(torch.abs(val))
-            mse_diff += torch.sum((pred-val)**2)
+            total_loss += mse.item()
             if self.verbose:
-                pbar.set_postfix(train_loss=batch_loss)
-
-        nd = abs_diff / abs_true
-        nrmse = torch.sqrt(mse_diff * self.train_num) / abs_true
-        return nd, nrmse
+                pbar.set_postfix(train_loss=batch_loss / self.batch_size)
+        total_loss /= self.train_num
+        return dict(mse=total_loss)
 
     def validate(self, epoch, iterator, loss_func):
         self.model.eval()
         total_loss = torch.Tensor([0])
-        abs_diff, abs_true, mse_diff = torch.Tensor([0]), torch.Tensor([0]), torch.Tensor([0])
+        y_true, y_pred = torch.empty(len(iterator.dataset), ), torch.empty(len(iterator.dataset), )
         for batch, ((row, col), val) in enumerate(iterator):
             row = row.to(self.device)
             col = col.to(self.device)
             val = val.to(self.device)
             pred = self.model(row, col)
+            mse, loss = self.get_loss(loss_func, row, col, pred, val)
+            total_loss += mse.item()
             pred = self.denormalized(pred, col)
             val = self.denormalized(val, col)
-            abs_diff += torch.sum(torch.abs(pred-val))
-            abs_true += torch.sum(torch.abs(val))
-            mse_diff += torch.sum((pred-val)**2)
-        nd = abs_diff / abs_true
-        nrmse = torch.sqrt(mse_diff * len(iterator) * self.batch_size) / abs_true
-        return nd, nrmse
+            y_true[batch*self.batch_size: (batch+1)*self.batch_size] = val
+            y_pred[batch*self.batch_size: (batch+1)*self.batch_size] = pred
+        metric = get_metric(y_true, y_pred)
+        metric.update({"mse": total_loss / len(iterator.dataset)})
+        return metric
 
     def test(self):
         self.model.eval()
@@ -200,24 +217,27 @@ class BaseTrain:
         print(self.model)
         self.num_params = self.count_parameters()
 
-        train_nrmse, vali_nrmse, test_nrmse = 0.0, 99999.0, 0.0
+        train_mse, vali_mse, test_mse = 0.0, 99999.0, 0.0
         for epoch in range(self.epochs):
-            _train_nd, _train_nrmse = self.train(epoch, loss_func, optimizer)
-            _vali_nd, _vali_nrmse = self.validate(epoch, self.vali_loader, loss_func)
-            if _vali_nrmse < vali_nrmse:
-                vali_nrmse = _vali_nrmse
-                train_nrmse = _train_nrmse
-                test_nd, test_nrmse = self.validate(epoch, self.test_loader, loss_func)
+            train_metric = self.train(epoch, loss_func, optimizer)
+            vali_metric = self.validate(epoch, self.vali_loader, loss_func)
             if self.verbose:
-                print("trn loss: {:.4} vali loss:{:.4}".format(float(train_nrmse), float(vali_nrmse)))
+                print("trn loss: {:.4} vali loss:{:.4} vali_rae: {:.4} vali_rse:{:.4}".format(
+                    float(train_metric["mse"]), float(vali_metric["mse"]),
+                    float(vali_metric["rae"]), float(vali_metric["rse"])))
+            if vali_metric["mse"] < vali_mse:
+                vali_mse = vali_metric["mse"]
+                train_mse = train_metric["mse"]
+                test_metric = self.validate(epoch, self.test_loader, loss_func)
+                test_mse = test_metric["mse"]
         hyperparams = self.get_hyperparameter()
         hyperparams.update({
-            "train_loss": float(train_nrmse),
-            "vali_loss": float(vali_nrmse),
-            "test_loss": float(test_nrmse),
+            "train_loss": float(train_mse),
+            "vali_loss": float(vali_mse),
+            "test_loss": float(test_mse),
         })
         self.logger.info("train_loss: {:.5}, vali_loss: {:.5}, test_loss: {:.5}"
-                         .format(float(train_nrmse), float(vali_nrmse), float(test_nrmse)))
+                         .format(float(train_mse), float(vali_mse), float(test_mse)))
         self.save_snapshot(hyperparams)
 
         if self.verbose:
