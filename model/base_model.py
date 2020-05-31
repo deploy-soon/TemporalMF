@@ -34,7 +34,7 @@ def get_corr(y_true, y_pred):
 def get_metric(y_true, y_pred):
     rse = get_rse(y_true, y_pred)
     rae = get_rae(y_true, y_pred)
-    return dict(rse=rse, rae=rae)
+    return dict(rse=float(rse), rae=float(rae))
 
 
 class BaseMF(nn.Module):
@@ -154,12 +154,12 @@ class BaseTrain:
             if self.verbose:
                 pbar.set_postfix(train_loss=batch_loss / self.batch_size)
         total_loss /= self.train_num
-        return dict(mse=total_loss)
+        return dict(mse=float(total_loss))
 
     def validate(self, epoch, iterator, loss_func):
         self.model.eval()
         total_loss = torch.Tensor([0])
-        y_true, y_pred = torch.empty(len(iterator.dataset), ), torch.empty(len(iterator.dataset), )
+        y_true, y_pred = torch.zeros(len(iterator.dataset), ), torch.zeros(len(iterator.dataset), )
         for batch, ((row, col), val) in enumerate(iterator):
             row = row.to(self.device)
             col = col.to(self.device)
@@ -172,7 +172,7 @@ class BaseTrain:
             y_true[batch*self.batch_size: (batch+1)*self.batch_size] = val
             y_pred[batch*self.batch_size: (batch+1)*self.batch_size] = pred
         metric = get_metric(y_true, y_pred)
-        metric.update({"mse": total_loss / len(iterator.dataset)})
+        metric.update({"mse": float(total_loss / len(iterator.dataset))})
         return metric
 
     def test(self):
@@ -214,17 +214,19 @@ class BaseTrain:
         optimizer = torch.optim.Adam(self.model.parameters(),
                                      lr=self.learning_rate,
                                      weight_decay=0)
-        print(self.model)
+        if self.verbose:
+            print(self.model)
         self.num_params = self.count_parameters()
 
         train_mse, vali_mse, test_mse = 0.0, 99999.0, 0.0
+        test_metric = {}
         for epoch in range(self.epochs):
             train_metric = self.train(epoch, loss_func, optimizer)
             vali_metric = self.validate(epoch, self.vali_loader, loss_func)
             if self.verbose:
                 print("trn loss: {:.4} vali loss:{:.4} vali_rae: {:.4} vali_rse:{:.4}".format(
-                    float(train_metric["mse"]), float(vali_metric["mse"]),
-                    float(vali_metric["rae"]), float(vali_metric["rse"])))
+                    train_metric["mse"], vali_metric["mse"],
+                    vali_metric["rae"], vali_metric["rse"]))
             if vali_metric["mse"] < vali_mse:
                 vali_mse = vali_metric["mse"]
                 train_mse = train_metric["mse"]
@@ -232,12 +234,14 @@ class BaseTrain:
                 test_mse = test_metric["mse"]
         hyperparams = self.get_hyperparameter()
         hyperparams.update({
-            "train_loss": float(train_mse),
-            "vali_loss": float(vali_mse),
-            "test_loss": float(test_mse),
+            "train_loss": train_mse,
+            "vali_loss": vali_mse,
+            "test_loss": test_mse,
         })
+        test_metric = dict(test_rae=test_metric["rae"], test_rse=test_metric["rse"])
+        hyperparams.update(test_metric)
         self.logger.info("train_loss: {:.5}, vali_loss: {:.5}, test_loss: {:.5}"
-                         .format(float(train_mse), float(vali_mse), float(test_mse)))
+                         .format(train_mse, vali_mse, test_mse))
         self.save_snapshot(hyperparams)
 
         if self.verbose:

@@ -478,12 +478,12 @@ if __name__ == "__main__":
     #                  lambda_x=0.5, lambda_f=50.0, lambda_theta=50.0, mu_x=0.5)
     #print(train.run())
     best = 999
-    for lambda_x in [5.0, 1.0]:
+    for lambda_x in [10.0, 6.0]:
         for lambda_f in [5.0]:
             for lambda_theta in [50.0]:
                 for mu_x in [0.5]:
                     train = BaseTrain(file_name="electricity", learning_rate=0.0015, epochs=55, factors=50, verbose=False,
-                                      loss_horizon=[3,4,5,6],
+                                      loss_horizon=[5, 6],
                                       lambda_x=lambda_x, lambda_f=lambda_f, lambda_theta=lambda_theta, mu_x=mu_x)
                     hyperparam = train.run()
                     best = min(best, hyperparam["test_metric"]["rse"])
