@@ -15,6 +15,7 @@ with torch framework
 
 ```
 # load temporal data
+$ git submodule update --init
 $ bash load_data.sh
 
 # run mf
