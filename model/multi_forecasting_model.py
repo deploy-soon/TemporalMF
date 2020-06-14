@@ -165,7 +165,7 @@ def init_weights(modules):
             m.data.normal_(0, 0.01)
 
 
-class BaseTrain(metaclass=abc.ABCMeta):
+class BaseTrain():
 
     def __init__(self,
                  factors=20,
@@ -507,7 +507,7 @@ class TensorMF(BaseTrain):
 
 class LSTMMF(BaseTrain):
 
-    def __init__(self, hid_dim=64, n_layers=1, dropout=0.3, **kwargs):
+    def __init__(self, hid_dim=128, n_layers=1, dropout=0.3, **kwargs):
         super().__init__(**kwargs)
         self.hid_dim = hid_dim
         self.n_layers = n_layers
@@ -526,7 +526,7 @@ class LSTMMF(BaseTrain):
 
 class GRUMF(BaseTrain):
 
-    def __init__(self, hid_dim=64, n_layers=1, dropout=0.3, **kwargs):
+    def __init__(self, hid_dim=128, n_layers=1, dropout=0.3, **kwargs):
         super().__init__(**kwargs)
         self.hid_dim = hid_dim
         self.n_layers = n_layers
@@ -566,7 +566,7 @@ class AttnLSTMMF(BaseTrain):
 
 class AttnMF(BaseTrain):
 
-    def __init__(self, kernels=64, **kwargs):
+    def __init__(self, kernels=128, **kwargs):
         super().__init__(**kwargs)
         self.kernels = kernels
         temporal_models = [AttnEmbedding(self.factors,
@@ -581,6 +581,7 @@ class AttnMF(BaseTrain):
 
 
 if __name__ == "__main__":
+    a = """
     fire.Fire({
         "vector": VectorMF,
         "matrix": MatrixMF,
@@ -590,20 +591,50 @@ if __name__ == "__main__":
         "attn": AttnMF,
         "attnlstm": AttnLSTMMF,
     })
-    #fire.Fire(Train)
-
-    #train = BaseTrain(file_name="electricity", learning_rate=0.0015, epochs=25, factors=50, verbose=False,
-    #                  lambda_x=0.5, lambda_f=50.0, lambda_theta=50.0, mu_x=0.5)
-    #print(train.run())
-    #best = 999
-    #for lambda_x in [10.0, 6.0]:
-    #    for lambda_f in [5.0]:
-    #        for lambda_theta in [50.0]:
-    #            for mu_x in [0.5]:
-    #                train = BaseTrain(file_name="electricity", learning_rate=0.0015, epochs=55, factors=50, verbose=False,
-    #                                  loss_horizon=[5, 6],
-    #                                  lambda_x=lambda_x, lambda_f=lambda_f, lambda_theta=lambda_theta, mu_x=mu_x)
-    #                hyperparam = train.run()
-    #                best = min(best, hyperparam["test_metric"]["rse"])
-    #print(best)
+    """
+    for lambda_x in [20.0, 5.0, 1.0]:
+        for loss_horizon in [[3], [6], [9]]:
+            for file_name in ["electricity", "exchange_rate", "solar", "traffic"]:
+                train = VectorMF(file_name=file_name, learning_rate=0.001,
+                                  epochs=60, factors=50, verbose=False,
+                                  loss_horizon=loss_horizon,
+                                  lambda_x=lambda_x, lambda_f=5.0,
+                                  lambda_theta=50.0, mu_x=0.5)
+                train.run()
+                train = MatrixMF(file_name=file_name, learning_rate=0.001,
+                                  epochs=60, factors=50, verbose=False,
+                                  loss_horizon=loss_horizon,
+                                  lambda_x=lambda_x, lambda_f=5.0,
+                                  lambda_theta=50.0, mu_x=0.5)
+                train.run()
+                train = TensorMF(file_name=file_name, learning_rate=0.001,
+                                  epochs=60, factors=50, verbose=False,
+                                  loss_horizon=loss_horizon,
+                                  lambda_x=lambda_x, lambda_f=5.0,
+                                  lambda_theta=50.0, mu_x=0.5)
+                train.run()
+                train = LSTMMF(file_name=file_name, learning_rate=0.001,
+                                  epochs=60, factors=50, verbose=False,
+                                  loss_horizon=loss_horizon,
+                                  lambda_x=lambda_x, lambda_f=5.0,
+                                  lambda_theta=50.0, mu_x=0.5)
+                train.run()
+                train = GRUMF(file_name=file_name, learning_rate=0.001,
+                                  epochs=60, factors=50, verbose=False,
+                                  loss_horizon=loss_horizon,
+                                  lambda_x=lambda_x, lambda_f=5.0,
+                                  lambda_theta=50.0, mu_x=0.5)
+                train.run()
+                train = AttnMF(file_name=file_name, learning_rate=0.001,
+                                  epochs=60, factors=50, verbose=False,
+                                  loss_horizon=loss_horizon,
+                                  lambda_x=lambda_x, lambda_f=5.0,
+                                  lambda_theta=50.0, mu_x=0.5)
+                train.run()
+                train = AttnLSTMMF(file_name=file_name, learning_rate=0.001,
+                                  epochs=60, factors=50, verbose=False,
+                                  loss_horizon=loss_horizon,
+                                  lambda_x=lambda_x, lambda_f=5.0,
+                                  lambda_theta=50.0, mu_x=0.5)
+                train.run()
 
