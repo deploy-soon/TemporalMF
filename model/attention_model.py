@@ -85,7 +85,7 @@ class AttnLSTM(nn.Module):
         # ipt_embedded = (batch, 1, hidden_dim, lags)
         opt_embedded = out[:, -1, :]
         # opt_embedded = (batch, hidden_dim)
-        conv = self.conv(ipt_embedded).squeeze()
+        conv = self.conv(ipt_embedded).squeeze(3)
         # conv = (batch, kernels, hidden_dim)
         conv = conv.permute(0, 2, 1)
         # conv = (batch, hidden_dim, kernels)
@@ -136,7 +136,7 @@ class AttnEmbedding(nn.Module):
         opt_embedded = lags_vectors[:, -1, :]
         conv = self.conv(ipt_embedded)
         # conv = (batch, kernels, factors, 1)
-        conv = conv.squeeze().permute(0, 2, 1)
+        conv = conv.squeeze(3).permute(0, 2, 1)
         # conv = (batch, factors, kernels)
         attn_weight = self.attn_weight(conv)
         attn_weight = torch.bmm(attn_weight, opt_embedded.unsqueeze(2))

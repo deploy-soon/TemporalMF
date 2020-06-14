@@ -11,7 +11,9 @@ import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader, Subset
 
-from recurrent_model import LagLSTM
+from autoregressive_model import VectorEmbedding, MatrixEmbedding, TensorEmbedding
+from recurrent_model import LagLSTM, LagGRU
+from attention_model import AttnEmbedding, AttnLSTM
 
 sys.path.append("../")
 from data import COOMatrixForecasting
@@ -111,6 +113,7 @@ class TemporalMF(nn.Module):
         self.temporal_model = temporal_model
 
     def predict(self, user, item, device):
+        #TODO: not implemented for ListModule
         lag_set = self.temporal_model.lag_set
         m = max(lag_set) + 1
         #filtered_row = row[row >= m]
@@ -227,12 +230,6 @@ class BaseTrain(metaclass=abc.ABCMeta):
                                               factors=self.factors).to(self.device)
                                for _ in self.loss_horizon]
         self.temporal_model = ListModule(*temporal_models)
-        #self.temporal_model = LagLSTM(factors=self.factors,
-        #                              lag_set=self.lag_set,
-        #                              hid_dim=128,
-        #                              n_layers=1,
-        #                              dropout=0.2,
-        #                              device=self.device).to(self.device)
 
         self.model = TemporalMF(users=self.data.users,
                                 items=self.data.items,
@@ -401,8 +398,6 @@ class BaseTrain(metaclass=abc.ABCMeta):
             train_mse, vali_mse = 0.0, 99999.9
             res[w] = {}
             for epoch in range(self.epochs):
-                #print("item", self.model.item_factor.weight)
-                #print("user", self.model.user_factor.weight)
                 t_mse = self.train(epoch, loss_func, optimizer)
                 v_mse, true, pred = self.validate(epoch, self.vali_loader, loss_func)
                 #print("pred", pred)
@@ -457,7 +452,7 @@ class BaseTrain(metaclass=abc.ABCMeta):
         #self.logger.info("train_loss: {:.5}, vali_loss: {:.5}, origin_loss: {:.5}"
         #                 .format(train_nrmse, vali_nrmse, vali_ori_nrmse))
         self.save_snapshot(hyperparams)
-        return hyperparams
+        #return hyperparams
 
 
 class Train(BaseTrain):
@@ -471,21 +466,144 @@ class Train(BaseTrain):
         return loss, loss
 
 
+class VectorMF(BaseTrain):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        temporal_models = [VectorEmbedding(lag_set=self.lag_set).to(self.device)
+                               for _ in self.loss_horizon]
+        self.temporal_model = ListModule(*temporal_models)
+        self.model = TemporalMF(users=self.data.users,
+                                items=self.data.items,
+                                factors=self.factors,
+                                temporal_model=self.temporal_model).to(self.device)
+
+
+class MatrixMF(BaseTrain):
+
+    def __init__(self, **kwargs):
+        super().__init__(** kwargs)
+        temporal_models = [MatrixEmbedding(lag_set=self.lag_set,
+                                           factors=self.factors).to(self.device)
+                               for _ in self.loss_horizon]
+        self.temporal_model = ListModule(*temporal_models)
+        self.model = TemporalMF(users=self.data.users,
+                                items=self.data.items,
+                                factors=self.factors,
+                                temporal_model=self.temporal_model).to(self.device)
+
+
+class TensorMF(BaseTrain):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        temporal_models = [TensorEmbedding(lag_set=self.lag_set,
+                                           factors=self.factors).to(self.device)
+                               for _ in self.loss_horizon]
+        self.temporal_model = ListModule(*temporal_models)
+        self.model = TemporalMF(users=self.data.users, items=self.data.items, factors=self.factors,
+                                temporal_model=self.temporal_model).to(self.device)
+
+
+class LSTMMF(BaseTrain):
+
+    def __init__(self, hid_dim=64, n_layers=1, dropout=0.3, **kwargs):
+        super().__init__(**kwargs)
+        self.hid_dim = hid_dim
+        self.n_layers = n_layers
+        self.dropout = dropout
+        temporal_models = [LagLSTM(self.factors,
+                                      self.lag_set,
+                                      hid_dim,
+                                      n_layers=self.n_layers,
+                                      dropout=self.dropout,
+                                      device=self.device).to(self.device)
+                               for _ in self.loss_horizon]
+        self.temporal_model = ListModule(*temporal_models)
+        self.model = TemporalMF(users=self.data.users, items=self.data.items, factors=self.factors,
+                                temporal_model=self.temporal_model).to(self.device)
+
+
+class GRUMF(BaseTrain):
+
+    def __init__(self, hid_dim=64, n_layers=1, dropout=0.3, **kwargs):
+        super().__init__(**kwargs)
+        self.hid_dim = hid_dim
+        self.n_layers = n_layers
+        self.dropout = dropout
+        temporal_models = [LagGRU(self.factors,
+                                     self.lag_set,
+                                     hid_dim,
+                                     n_layers=self.n_layers,
+                                     dropout=self.dropout,
+                                     device=self.device).to(self.device)
+                               for _ in self.loss_horizon]
+        self.temporal_model = ListModule(*temporal_models)
+        self.model = TemporalMF(users=self.data.users, items=self.data.items, factors=self.factors,
+                                temporal_model=self.temporal_model).to(self.device)
+
+
+class AttnLSTMMF(BaseTrain):
+
+    def __init__(self, hid_dim=128, n_layers=1, kernels=64, dropout=0.3, **kwargs):
+        super().__init__(**kwargs)
+        self.n_layers = n_layers
+        self.hid_dim = hid_dim
+        self.kernels = kernels
+        self.dropout = dropout
+        temporal_models = [AttnLSTM(self.factors,
+                                       self.lag_set,
+                                       hid_dim,
+                                       n_layers=self.n_layers,
+                                       kernels=self.kernels,
+                                       dropout=self.dropout,
+                                       device=self.device).to(self.device)
+                               for _ in self.loss_horizon]
+        self.temporal_model = ListModule(*temporal_models)
+        self.model = TemporalMF(users=self.data.users, items=self.data.items, factors=self.factors,
+                                temporal_model=self.temporal_model).to(self.device)
+
+
+class AttnMF(BaseTrain):
+
+    def __init__(self, kernels=64, **kwargs):
+        super().__init__(**kwargs)
+        self.kernels = kernels
+        temporal_models = [AttnEmbedding(self.factors,
+                                            self.lag_set,
+                                            kernels=self.kernels,
+                                            device=self.device).to(self.device)
+                               for _ in self.loss_horizon]
+        self.temporal_model = ListModule(*temporal_models)
+        self.model = TemporalMF(users=self.data.users, items=self.data.items, factors=self.factors,
+                                temporal_model=self.temporal_model).to(self.device)
+
+
+
 if __name__ == "__main__":
+    fire.Fire({
+        "vector": VectorMF,
+        "matrix": MatrixMF,
+        "tensor": TensorMF,
+        "lstm": LSTMMF,
+        "gru": GRUMF,
+        "attn": AttnMF,
+        "attnlstm": AttnLSTMMF,
+    })
     #fire.Fire(Train)
 
     #train = BaseTrain(file_name="electricity", learning_rate=0.0015, epochs=25, factors=50, verbose=False,
     #                  lambda_x=0.5, lambda_f=50.0, lambda_theta=50.0, mu_x=0.5)
     #print(train.run())
-    best = 999
-    for lambda_x in [10.0, 6.0]:
-        for lambda_f in [5.0]:
-            for lambda_theta in [50.0]:
-                for mu_x in [0.5]:
-                    train = BaseTrain(file_name="electricity", learning_rate=0.0015, epochs=55, factors=50, verbose=False,
-                                      loss_horizon=[5, 6],
-                                      lambda_x=lambda_x, lambda_f=lambda_f, lambda_theta=lambda_theta, mu_x=mu_x)
-                    hyperparam = train.run()
-                    best = min(best, hyperparam["test_metric"]["rse"])
-    print(best)
+    #best = 999
+    #for lambda_x in [10.0, 6.0]:
+    #    for lambda_f in [5.0]:
+    #        for lambda_theta in [50.0]:
+    #            for mu_x in [0.5]:
+    #                train = BaseTrain(file_name="electricity", learning_rate=0.0015, epochs=55, factors=50, verbose=False,
+    #                                  loss_horizon=[5, 6],
+    #                                  lambda_x=lambda_x, lambda_f=lambda_f, lambda_theta=lambda_theta, mu_x=mu_x)
+    #                hyperparam = train.run()
+    #                best = min(best, hyperparam["test_metric"]["rse"])
+    #print(best)
 
